@@ -1,0 +1,28 @@
+builds:
+  - binary: pgmetrics
+    main: ./cmd/pgmetrics
+    goos:
+      - windows
+      - darwin
+      - linux
+    goarch:
+      - amd64
+    env:
+      - CGO_ENABLED=0
+archive:
+  format: tar.gz
+  format_overrides:
+    - goos: windows
+      format: zip
+  files:
+    - README.md
+    - LICENSE
+  wrap_in_directory: true
+release:
+  draft: true
+  github:
+    owner: rapidloop
+    name: pgmetrics
+  name_template: 'Release {{.Version}}'
+checksum:
+
