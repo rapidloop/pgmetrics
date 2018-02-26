@@ -5,5 +5,5 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /root/pgmetrics g
 FROM alpine:latest  
 RUN apk --no-cache add ca-certificates
 COPY --from=0 /root/pgmetrics /bin/pgmetrics
-CMD ["/bin/pgmetrics"]
+ENTRYPOINT ["/bin/pgmetrics"]
 
