@@ -42,6 +42,7 @@ General options:
   -S, --no-sizes           don't collect tablespace and relation sizes
   -i, --input=FILE         don't connect to db, instead read and display
                                this previously saved JSON file
+  -V, --version            output version information, then exit
   -?, --help[=options]     show this help, then exit
       --help=variables     list environment variables, then exit
 
@@ -80,6 +81,8 @@ Usage:
   PGCONNECT_TIMEOUT  connection timeout in seconds
 `
 
+var version string // set during build
+
 type options struct {
 	// general
 	timeoutSec uint
@@ -87,6 +90,7 @@ type options struct {
 	input      string
 	help       string
 	helpShort  bool
+	version    bool
 	// output
 	format     string
 	output     string
@@ -108,6 +112,7 @@ func (o *options) defaults() {
 	o.input = ""
 	o.help = ""
 	o.helpShort = false
+	o.version = false
 	// output
 	o.format = "human"
 	o.output = ""
@@ -166,11 +171,12 @@ func (o *options) parse() (args []string) {
 	s.BoolVarLong(&o.noSizes, "no-sizes", 'S', "")
 	s.StringVarLong(&o.input, "input", 'i', "")
 	help := s.StringVarLong(&o.help, "help", '?', "").SetOptional()
+	s.BoolVarLong(&o.version, "version", 'V', "").SetFlag()
 	// output
 	s.StringVarLong(&o.format, "format", 'f', "")
 	s.StringVarLong(&o.output, "output", 'o', "")
 	s.UintVarLong(&o.tooLongSec, "toolong", 'l', "")
-	s.BoolVarLong(&o.nopager, "no-pager", 0, "")
+	s.BoolVarLong(&o.nopager, "no-pager", 0, "").SetFlag()
 	// connection
 	s.StringVarLong(&o.host, "host", 'h', "")
 	s.Uint16VarLong(&o.port, "port", 'p', "")
@@ -207,6 +213,15 @@ func (o *options) parse() (args []string) {
 	// help action
 	if o.helpShort || o.help == "short" || o.help == "variables" {
 		o.usage(0)
+	}
+
+	// version action
+	if o.version {
+		if len(version) == 0 {
+			version = "devel"
+		}
+		fmt.Println("pgmetrics", version)
+		os.Exit(0)
 	}
 
 	// return remaining args
