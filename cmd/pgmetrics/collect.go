@@ -56,7 +56,7 @@ func collect(o options, args []string) *pgmetrics.Model {
 	if len(o.user) > 0 {
 		connstr += makeKV("user", o.user)
 	}
-	if !o.passNone {
+	if len(o.password) > 0 {
 		connstr += makeKV("password", o.password)
 	}
 	if os.Getenv("PGSSLMODE") == "" {
