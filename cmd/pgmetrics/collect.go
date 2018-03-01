@@ -1102,11 +1102,14 @@ func (c *collector) getReplicationSlotsv94() {
 
 	q := `SELECT slot_name, COALESCE(plugin, ''), slot_type,
 			COALESCE(database, ''), active, xmin, catalog_xmin,
-			restart_lsn, confirmed_flush_lsn
+			restart_lsn, confirmed_flush_lsn, temporary
 		  FROM pg_replication_slots
 		  ORDER BY slot_name ASC`
 	if c.version < 90600 { // confirmed_flush_lsn only in v9.6+
 		q = strings.Replace(q, "confirmed_flush_lsn", "''", 1)
+	}
+	if c.version < 100000 { // temporary only in v10+
+		q = strings.Replace(q, "temporary", "FALSE", 1)
 	}
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
@@ -1119,7 +1122,8 @@ func (c *collector) getReplicationSlotsv94() {
 		var xmin, cXmin sql.NullInt64
 		var rlsn, cflsn sql.NullString
 		if err := rows.Scan(&rs.SlotName, &rs.Plugin, &rs.SlotType,
-			&rs.DBName, &rs.Active, &xmin, &cXmin, &rlsn, &cflsn); err != nil {
+			&rs.DBName, &rs.Active, &xmin, &cXmin, &rlsn, &cflsn,
+			&rs.Temporary); err != nil {
 			log.Fatalf("pg_replication_slots query failed: %v", err)
 		}
 		rs.Xmin = int(xmin.Int64)

@@ -175,6 +175,7 @@ type ReplicationSlot struct {
 	CatalogXmin       int    `json:"catalog_xmin"`
 	RestartLSN        string `json:"restart_lsn"`
 	ConfirmedFlushLSN string `json:"confirmed_flush_lsn"`
+	Temporary         bool   `json:"temporary"`
 }
 
 type Role struct {

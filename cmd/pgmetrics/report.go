@@ -91,7 +91,7 @@ PostgreSQL Cluster:
 	}
 
 	if len(result.ReplicationSlots) > 0 {
-		reportReplicationSlots(fd, result)
+		reportReplicationSlots(fd, result, version)
 	}
 
 	reportWAL(fd, result)
@@ -186,7 +186,7 @@ Outgoing Replication Stats:`)
 	fmt.Fprintln(fd)
 }
 
-func reportReplicationSlots(fd io.Writer, result *pgmetrics.Model) {
+func reportReplicationSlots(fd io.Writer, result *pgmetrics.Model, version int) {
 	var phy, log int
 	for _, r := range result.ReplicationSlots {
 		if r.SlotType == "physical" {
@@ -200,12 +200,21 @@ func reportReplicationSlots(fd io.Writer, result *pgmetrics.Model) {
 Physical Replication Slots:
 `)
 		var tw tableWriter
-		tw.add("Name", "Active", "Oldest Txn ID", "Restart LSN")
+		cols := []interface{}{"Name", "Active", "Oldest Txn ID", "Restart LSN"}
+		if version >= 100000 {
+			cols = append(cols, "Temporary")
+		}
+		tw.add(cols...)
 		for _, r := range result.ReplicationSlots {
 			if r.SlotType != "physical" {
 				continue
 			}
-			tw.add(r.SlotName, fmtYesNo(r.Active), fmtIntZero(r.Xmin), r.RestartLSN)
+			vals := []interface{}{r.SlotName, fmtYesNo(r.Active),
+				fmtIntZero(r.Xmin), r.RestartLSN}
+			if version >= 100000 {
+				vals = append(vals, fmtYesNo(r.Temporary))
+			}
+			tw.add(vals...)
 		}
 		tw.write(fd, "    ")
 	}
@@ -214,19 +223,23 @@ Physical Replication Slots:
 Logical Replication Slots:
 `)
 		var tw tableWriter
-		tw.add("Name", "Plugin", "Database", "Active?", "Oldest Txn ID", "Restart LSN", "Flushed Until")
+		cols := []interface{}{"Name", "Plugin", "Database", "Active",
+			"Oldest Txn ID", "Restart LSN", "Flushed Until"}
+		if version >= 100000 {
+			cols = append(cols, "Temporary")
+		}
+		tw.add(cols...)
 		for _, r := range result.ReplicationSlots {
 			if r.SlotType != "logical" {
 				continue
 			}
-			tw.add(
-				r.SlotName,
-				r.Plugin,
-				r.DBName,
-				fmtYesNo(r.Active),
-				fmtIntZero(r.Xmin),
-				r.RestartLSN,
-				r.ConfirmedFlushLSN)
+			vals := []interface{}{r.SlotName, r.Plugin, r.DBName,
+				fmtYesNo(r.Active), fmtIntZero(r.Xmin), r.RestartLSN,
+				r.ConfirmedFlushLSN}
+			if version >= 100000 {
+				vals = append(vals, fmtYesNo(r.Temporary))
+			}
+			tw.add(vals...)
 		}
 		tw.write(fd, "    ")
 	}
