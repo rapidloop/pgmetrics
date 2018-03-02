@@ -21,6 +21,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"runtime"
 	"strconv"
@@ -1067,7 +1068,7 @@ func (c *collector) getRoles() {
 	q := `SELECT R.oid, R.rolname, R.rolsuper, R.rolinherit, R.rolcreaterole,
 			R.rolcreatedb, R.rolcanlogin, R.rolreplication, R.rolbypassrls,
 			R.rolconnlimit,
-			COALESCE(EXTRACT(EPOCH FROM R.rolvaliduntil)::bigint, 0),
+			COALESCE(EXTRACT(EPOCH FROM R.rolvaliduntil), 0),
 			ARRAY(SELECT pg_get_userbyid(M.roleid) FROM pg_auth_members AS M
 					WHERE M.member = R.oid)
 		  FROM pg_roles AS R
@@ -1083,11 +1084,15 @@ func (c *collector) getRoles() {
 
 	for rows.Next() {
 		var r pgmetrics.Role
+		var validUntil float64
 		if err := rows.Scan(&r.OID, &r.Name, &r.Rolsuper, &r.Rolinherit,
 			&r.Rolcreaterole, &r.Rolcreatedb, &r.Rolcanlogin, &r.Rolreplication,
-			&r.Rolbypassrls, &r.Rolconnlimit, &r.Rolvaliduntil,
+			&r.Rolbypassrls, &r.Rolconnlimit, &validUntil,
 			pq.Array(&r.MemberOf)); err != nil {
 			log.Fatalf("pg_roles/pg_auth_members query failed: %v", err)
+		}
+		if !math.IsInf(validUntil, 0) {
+			r.Rolvaliduntil = int64(validUntil)
 		}
 		c.result.Roles = append(c.result.Roles, r)
 	}
