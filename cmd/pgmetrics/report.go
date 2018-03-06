@@ -490,7 +490,7 @@ Vacuum Progress:`)
 	var tw tableWriter
 	add := func(s string) { tw.add(s, getSetting(result, s)) }
 	tw.add("Setting", "Value")
-	tw.add("maintenance_work_mem", getSettingBytes(result, "maintenance_work_mem", 1))
+	tw.add("maintenance_work_mem", getSettingBytes(result, "maintenance_work_mem", 1024))
 	add("autovacuum")
 	add("autovacuum_analyze_threshold")
 	add("autovacuum_vacuum_threshold")
