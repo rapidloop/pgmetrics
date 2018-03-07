@@ -79,9 +79,21 @@ Usage:
   PGSSLKEY           path to secret key for client SSL certificate
   PGSSLROOTCERT      path to SSL root CA
   PGCONNECT_TIMEOUT  connection timeout in seconds
+
+Also, the following libpq-related environment variarables are not
+required/used by pgmetrics and are IGNORED:
+
+  PGHOSTADDR, PGSERVICE,     PGSERVICEFILE, PGREALM,  PGREQUIRESSL,
+  PGSSLCRL,   PGREQUIREPEER, PGKRBSRVNAME,  PGGSSLIB, PGSYSCONFDIR,
+  PGLOCALEDIR
 `
 
 var version string // set during build
+var ignoreEnvs = []string{
+	"PGHOSTADDR", "PGSERVICE", "PGSERVICEFILE", "PGREALM", "PGREQUIRESSL",
+	"PGSSLCRL", "PGREQUIREPEER", "PGKRBSRVNAME", "PGGSSLIB", "PGSYSCONFDIR",
+	"PGLOCALEDIR",
+}
 
 type options struct {
 	// general
@@ -285,6 +297,10 @@ func process(result *pgmetrics.Model, o options, args []string) {
 }
 
 func main() {
+	for _, e := range ignoreEnvs {
+		os.Unsetenv(e)
+	}
+
 	var o options
 	o.defaults()
 	args := o.parse()
