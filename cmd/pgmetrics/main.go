@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"regexp"
 	"strconv"
 
 	"github.com/howeyc/gopass"
@@ -38,26 +39,33 @@ Usage:
   pgmetrics [OPTION]... [DBNAME]
 
 General options:
-  -t, --timeout=SECS       individual query timeout in seconds (default: 5)
-  -S, --no-sizes           don't collect tablespace and relation sizes
-  -i, --input=FILE         don't connect to db, instead read and display
-                               this previously saved JSON file
-  -V, --version            output version information, then exit
-  -?, --help[=options]     show this help, then exit
-      --help=variables     list environment variables, then exit
+  -t, --timeout=SECS           individual query timeout in seconds (default: 5)
+  -S, --no-sizes               don't collect tablespace and relation sizes
+  -i, --input=FILE             don't connect to db, instead read and display
+                                   this previously saved JSON file
+  -V, --version                output version information, then exit
+  -?, --help[=options]         show this help, then exit
+      --help=variables         list environment variables, then exit
+
+Collection options:
+  -c, --schema=REGEXP          collect only from schema(s) matching POSIX regexp
+  -C, --exclude-schema=REGEXP  do NOT collect from schema(s) matching POSIX regexp
+  -a, --table=REGEXP           collect only from table(s) matching POSIX regexp
+  -A, --exclude-table=REGEXP   do NOT collect from table(s) matching POSIX regexp
 
 Output options:
-  -f, --format=FORMAT      output format; "human", or "json" (default: "human")
-  -l, --toolong=SECS       for human output, transactions running longer than
-                               this are considered too long (default: 60)
-  -o, --output=FILE        write output to the specified file
-      --no-pager           do not invoke the pager for tty output
+  -f, --format=FORMAT          output format; "human", or "json" (default: "human")
+  -l, --toolong=SECS           for human output, transactions running longer than
+                                   this are considered too long (default: 60)
+  -o, --output=FILE            write output to the specified file
+      --no-pager               do not invoke the pager for tty output
 
 Connection options:
-  -h, --host=HOSTNAME      database server host or socket directory (default: "%s")
-  -p, --port=PORT          database server port (default: %d)
-  -U, --username=USERNAME  database user name (default: "%s")
-      --no-password        never prompt for password
+  -h, --host=HOSTNAME          database server host or socket directory
+                                   (default: "%s")
+  -p, --port=PORT              database server port (default: %d)
+  -U, --username=USERNAME      database user name (default: "%s")
+      --no-password            never prompt for password
 
 For more information, visit <https://pgmetrics.io>.
 `
@@ -103,6 +111,11 @@ type options struct {
 	help       string
 	helpShort  bool
 	version    bool
+	// collection
+	schema     string
+	exclSchema string
+	table      string
+	exclTable  string
 	// output
 	format     string
 	output     string
@@ -125,6 +138,11 @@ func (o *options) defaults() {
 	o.help = ""
 	o.helpShort = false
 	o.version = false
+	// collection
+	o.schema = ""
+	o.exclSchema = ""
+	o.table = ""
+	o.exclTable = ""
 	// output
 	o.format = "human"
 	o.output = ""
@@ -184,6 +202,11 @@ func (o *options) parse() (args []string) {
 	s.StringVarLong(&o.input, "input", 'i', "")
 	help := s.StringVarLong(&o.help, "help", '?', "").SetOptional()
 	s.BoolVarLong(&o.version, "version", 'V', "").SetFlag()
+	// collection
+	s.StringVarLong(&o.schema, "schema", 'c', "")
+	s.StringVarLong(&o.exclSchema, "exclude-schema", 'C', "")
+	s.StringVarLong(&o.table, "table", 'a', "")
+	s.StringVarLong(&o.exclTable, "exclude-table", 'A', "")
 	// output
 	s.StringVarLong(&o.format, "format", 'f', "")
 	s.StringVarLong(&o.output, "output", 'o', "")
@@ -221,6 +244,26 @@ func (o *options) parse() (args []string) {
 		printTry()
 		os.Exit(2)
 	}
+	if _, err := getRegexp(o.schema); err != nil {
+		fmt.Fprintf(os.Stderr, "bad POSIX regular expression for -c/--schema: %v\n", err)
+		printTry()
+		os.Exit(2)
+	}
+	if _, err := getRegexp(o.exclSchema); err != nil {
+		fmt.Fprintf(os.Stderr, "bad POSIX regular expression for -C/--exclude-schema: %v\n", err)
+		printTry()
+		os.Exit(2)
+	}
+	if _, err := getRegexp(o.table); err != nil {
+		fmt.Fprintf(os.Stderr, "bad POSIX regular expression for -a/--table: %v\n", err)
+		printTry()
+		os.Exit(2)
+	}
+	if _, err := getRegexp(o.exclTable); err != nil {
+		fmt.Fprintf(os.Stderr, "bad POSIX regular expression for -A/--exclude-table: %v\n", err)
+		printTry()
+		os.Exit(2)
+	}
 
 	// help action
 	if o.helpShort || o.help == "short" || o.help == "variables" {
@@ -238,6 +281,13 @@ func (o *options) parse() (args []string) {
 
 	// return remaining args
 	return s.Args()
+}
+
+func getRegexp(r string) (*regexp.Regexp, error) {
+	if len(r) == 0 {
+		return nil, nil
+	}
+	return regexp.CompilePOSIX(r)
 }
 
 func writeTo(fd io.Writer, o options, result *pgmetrics.Model) {

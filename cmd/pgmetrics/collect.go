@@ -23,6 +23,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -103,13 +104,17 @@ func collectFromDB(connstr string, c *collector, o options) {
 }
 
 type collector struct {
-	db       *sql.DB
-	result   pgmetrics.Model
-	version  int    // integer form of server version
-	local    bool   // have we connected to the server on the same machine?
-	dataDir  string // the PGDATA dir, valid only if local
-	beenHere bool
-	timeout  time.Duration
+	db           *sql.DB
+	result       pgmetrics.Model
+	version      int    // integer form of server version
+	local        bool   // have we connected to the server on the same machine?
+	dataDir      string // the PGDATA dir, valid only if local
+	beenHere     bool
+	timeout      time.Duration
+	rxSchema     *regexp.Regexp
+	rxExclSchema *regexp.Regexp
+	rxTable      *regexp.Regexp
+	rxExclTable  *regexp.Regexp
 }
 
 func (c *collector) collect(db *sql.DB, o options) {
@@ -124,6 +129,13 @@ func (c *collector) collect(db *sql.DB, o options) {
 func (c *collector) collectFirst(db *sql.DB, o options) {
 	c.db = db
 	c.timeout = time.Duration(o.timeoutSec) * time.Second
+
+	// Compile regexes for schema and table, if any. The values are already
+	// checked for validity.
+	c.rxSchema, _ = getRegexp(o.schema)
+	c.rxExclSchema, _ = getRegexp(o.exclSchema)
+	c.rxTable, _ = getRegexp(o.table)
+	c.rxExclTable, _ = getRegexp(o.exclTable)
 
 	// current time is the report start time
 	c.result.Metadata.At = time.Now().Unix()
@@ -232,6 +244,46 @@ func (c *collector) collectDatabase(o options) {
 	c.getExtensions()
 	c.getDisabledTriggers()
 	c.getBloat()
+}
+
+// schemaOK checks to see if this schema is OK to be collected, based on the
+// --schema/--exclude-schema constraints.
+func (c *collector) schemaOK(name string) bool {
+	if c.rxSchema != nil {
+		// exclude things that don't match --schema
+		if !c.rxSchema.MatchString(name) {
+			return false
+		}
+	}
+	if c.rxExclSchema != nil {
+		// exclude things that match --exclude-schema
+		if c.rxExclSchema.MatchString(name) {
+			return false
+		}
+	}
+	return true
+}
+
+// tableOK checks to see if the schema and table are to be collected, based on
+// --{,exclude-}{schema,table} options.
+func (c *collector) tableOK(schema, table string) bool {
+	// exclude things that don't match schema constraints
+	if !c.schemaOK(schema) {
+		return false
+	}
+	if c.rxTable != nil {
+		// exclude things that don't match --table
+		if !c.rxTable.MatchString(table) {
+			return false
+		}
+	}
+	if c.rxExclTable != nil {
+		// exclude things that match --exclude-table
+		if c.rxExclTable.MatchString(table) {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *collector) setting(key string) string {
@@ -892,7 +944,9 @@ func (c *collector) getTables(fillSize bool) {
 		}
 		t.Size = -1  // will be filled in later if asked for
 		t.Bloat = -1 // will be filled in later
-		c.result.Tables = append(c.result.Tables, t)
+		if c.tableOK(t.SchemaName, t.Name) {
+			c.result.Tables = append(c.result.Tables, t)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		log.Fatalf("pg_stat(io)_user_tables query failed: %v", err)
@@ -933,7 +987,9 @@ func (c *collector) getIndexes(fillSize bool) {
 		}
 		idx.Size = -1  // will be filled in later if asked for
 		idx.Bloat = -1 // will be filled in later
-		c.result.Indexes = append(c.result.Indexes, idx)
+		if c.tableOK(idx.SchemaName, idx.TableName) {
+			c.result.Indexes = append(c.result.Indexes, idx)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		log.Fatalf("pg_stat_user_indexes query failed: %v", err)
@@ -967,7 +1023,9 @@ func (c *collector) getSequences() {
 			&s.BlksRead, &s.BlksHit); err != nil {
 			log.Fatalf("pg_statio_user_sequences query failed: %v", err)
 		}
-		c.result.Sequences = append(c.result.Sequences, s)
+		if c.schemaOK(s.SchemaName) {
+			c.result.Sequences = append(c.result.Sequences, s)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		log.Fatalf("pg_statio_user_sequences query failed: %v", err)
@@ -994,7 +1052,9 @@ func (c *collector) getUserFunctions() {
 			&f.Calls, &f.TotalTime, &f.SelfTime); err != nil {
 			log.Fatalf("pg_stat_user_functions query failed: %v", err)
 		}
-		c.result.UserFunctions = append(c.result.UserFunctions, f)
+		if c.schemaOK(f.SchemaName) {
+			c.result.UserFunctions = append(c.result.UserFunctions, f)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		log.Fatalf("pg_stat_user_functions query failed: %v", err)
@@ -1167,7 +1227,9 @@ func (c *collector) getDisabledTriggers() {
 			tg.SchemaName = t.SchemaName
 			tg.TableName = t.Name
 		}
-		c.result.DisabledTriggers = append(c.result.DisabledTriggers, tg)
+		if c.schemaOK(tg.SchemaName) {
+			c.result.DisabledTriggers = append(c.result.DisabledTriggers, tg)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		log.Fatalf("pg_trigger/pg_proc query failed: %v", err)
