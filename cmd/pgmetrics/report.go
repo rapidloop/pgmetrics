@@ -78,6 +78,10 @@ PostgreSQL Cluster:
 		fmtYesNo(result.IsInRecovery),
 	)
 
+	if result.System != nil {
+		reportSystem(fd, result)
+	}
+
 	if result.IsInRecovery {
 		reportRecovery(fd, result)
 	}
@@ -104,9 +108,6 @@ PostgreSQL Cluster:
 	reportTablespaces(fd, result)
 	reportDatabases(fd, result)
 	reportTables(fd, result)
-	if result.System != nil {
-		reportSystem(fd, result)
-	}
 	fmt.Fprintln(fd)
 }
 
