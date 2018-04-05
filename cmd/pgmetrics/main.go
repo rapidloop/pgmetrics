@@ -52,6 +52,9 @@ Collection options:
   -C, --exclude-schema=REGEXP  do NOT collect from schema(s) matching POSIX regexp
   -a, --table=REGEXP           collect only from table(s) matching POSIX regexp
   -A, --exclude-table=REGEXP   do NOT collect from table(s) matching POSIX regexp
+      --omit=WHAT              do NOT collect the items specified as a comma-separated
+                                   list of: "tables", "indexes", "sequences",
+                                   "functions", "extensions", "triggers"
 
 Output options:
   -f, --format=FORMAT          output format; "human", or "json" (default: "human")
@@ -116,6 +119,7 @@ type options struct {
 	exclSchema string
 	table      string
 	exclTable  string
+	omit       []string
 	// output
 	format     string
 	output     string
@@ -143,6 +147,7 @@ func (o *options) defaults() {
 	o.exclSchema = ""
 	o.table = ""
 	o.exclTable = ""
+	o.omit = nil
 	// output
 	o.format = "human"
 	o.output = ""
@@ -207,6 +212,7 @@ func (o *options) parse() (args []string) {
 	s.StringVarLong(&o.exclSchema, "exclude-schema", 'C', "")
 	s.StringVarLong(&o.table, "table", 'a', "")
 	s.StringVarLong(&o.exclTable, "exclude-table", 'A', "")
+	s.ListVarLong(&o.omit, "omit", 0, "")
 	// output
 	s.StringVarLong(&o.format, "format", 'f', "")
 	s.StringVarLong(&o.output, "output", 'o', "")
@@ -263,6 +269,14 @@ func (o *options) parse() (args []string) {
 		fmt.Fprintf(os.Stderr, "bad POSIX regular expression for -A/--exclude-table: %v\n", err)
 		printTry()
 		os.Exit(2)
+	}
+	for _, om := range o.omit {
+		if om != "tables" && om != "indexes" && om != "sequences" &&
+			om != "functions" && om != "extensions" && om != "triggers" {
+			fmt.Fprintf(os.Stderr, "unknown item \"%s\" in --omit option\n", om)
+			printTry()
+			os.Exit(2)
+		}
 	}
 
 	// help action

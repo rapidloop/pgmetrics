@@ -237,13 +237,34 @@ func (c *collector) collectCluster(o options) {
 // info and stats for the current database
 func (c *collector) collectDatabase(o options) {
 	c.getCurrentDatabase()
-	c.getTables(!o.noSizes)
-	c.getIndexes(!o.noSizes)
-	c.getSequences()
-	c.getUserFunctions()
-	c.getExtensions()
-	c.getDisabledTriggers()
+	if !arrayHas(o.omit, "tables") {
+		c.getTables(!o.noSizes)
+	}
+	if !arrayHas(o.omit, "tables") && !arrayHas(o.omit, "indexes") {
+		c.getIndexes(!o.noSizes)
+	}
+	if !arrayHas(o.omit, "sequences") {
+		c.getSequences()
+	}
+	if !arrayHas(o.omit, "functions") {
+		c.getUserFunctions()
+	}
+	if !arrayHas(o.omit, "extensions") {
+		c.getExtensions()
+	}
+	if !arrayHas(o.omit, "tables") && !arrayHas(o.omit, "triggers") {
+		c.getDisabledTriggers()
+	}
 	c.getBloat()
+}
+
+func arrayHas(arr []string, val string) bool {
+	for _, elem := range arr {
+		if elem == val {
+			return true
+		}
+	}
+	return false
 }
 
 // schemaOK checks to see if this schema is OK to be collected, based on the
