@@ -70,6 +70,11 @@ PostgreSQL Cluster:
 		)
 	}
 
+	if version >= 90600 {
+		fmt.Fprintf(fd, `
+    Notification Queue:  %.1f%% used`, result.NotificationQueueUsage)
+	}
+
 	fmt.Fprintf(fd, `
     Active Backends:     %d (max %s)
     Recovery Mode?       %s

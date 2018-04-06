@@ -232,6 +232,10 @@ func (c *collector) collectCluster(o options) {
 
 	c.getRoles()
 	c.getWALCounts()
+
+	if c.version >= 90600 {
+		c.getNotification()
+	}
 }
 
 // info and stats for the current database
@@ -1274,6 +1278,16 @@ func (c *collector) getWALCounts() {
 	}
 	if err := c.db.QueryRowContext(ctx, q2).Scan(&c.result.WALReadyCount); err != nil {
 		c.result.WALReadyCount = -1 // ignore errors, need superuser
+	}
+}
+
+func (c *collector) getNotification() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT pg_notification_queue_usage()`
+	if err := c.db.QueryRowContext(ctx, q).Scan(&c.result.NotificationQueueUsage); err != nil {
+		log.Fatalf("pg_notification_queue_usage failed: %v", err)
 	}
 }
 

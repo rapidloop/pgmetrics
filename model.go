@@ -17,8 +17,10 @@
 package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
-// defined below. It is in the "semver" notation.
-const ModelSchemaVersion = "1.0"
+// defined below. It is in the "semver" notation. Version history:
+//    1.1 - added NotificationQueueUsage and Statements
+//    1.0 - initial release
+const ModelSchemaVersion = "1.1"
 
 // Model contains the entire information collected by a single run of
 // pgmetrics. It can be converted to and from json without loss of
@@ -60,6 +62,11 @@ type Model struct {
 	WALCount      int          `json:"wal_count"`
 	WALReadyCount int          `json:"wal_ready_count"`
 
+	// NotificationQueueUsage is the fraction of the asynchronous notification
+	// queue currently occupied. Postgres v9.6 and above only. Added in
+	// schema version 1.1.
+	NotificationQueueUsage float64 `json:"notification_queue_usage"`
+
 	// replication
 	ReplicationOutgoing []ReplicationOut  `json:"replication_outgoing,omitempty"`
 	ReplicationIncoming *ReplicationIn    `json:"replication_incoming,omitempty"`
@@ -82,6 +89,7 @@ type Model struct {
 	UserFunctions    []UserFunction `json:"user_functions,omitempty"`
 	Extensions       []Extension    `json:"extensions,omitempty"`
 	DisabledTriggers []Trigger      `json:"disabled_triggers,omitempty"`
+	Statements       []Statement    `json:"statements,omitempty"`
 
 	// System-level
 	System *SystemMetrics `json:"system,omitempty"`
@@ -394,4 +402,33 @@ type Trigger struct {
 	TableName  string `json:"table_name"`
 	Name       string `json:"name"`
 	ProcName   string `json:"proc_name"`
+}
+
+// Statement represents a row of the pg_stat_statements view. Added in schema
+// version 1.1.
+type Statement struct {
+	UserOID           int     `json:"useroid"`             // OID of user who executed the statement
+	UserName          string  `json:"user"`                // Name of the user corresponding to useroid (might be empty)
+	DBOID             int     `json:"db_oid"`              // OID of database in which the statement was executed
+	DBName            string  `json:"db_name"`             // Name of the database corresponding to db_oid
+	QueryID           int64   `json:"queryid"`             // Internal hash code, computed from the statement's parse tree
+	Query             string  `json:"query"`               // Text of a representative statement
+	Calls             int64   `json:"calls"`               // Number of times executed
+	TotalTime         float64 `json:"total_time"`          // Total time spent in the statement, in milliseconds
+	MinTime           float64 `json:"min_time"`            // Minimum time spent in the statement, in milliseconds
+	MaxTime           float64 `json:"max_time"`            // Maximum time spent in the statement, in milliseconds
+	StddevTime        float64 `json:"stddev_time"`         // Population standard deviation of time spent in the statement, in milliseconds
+	Rows              int64   `json:"rows"`                // Total number of rows retrieved or affected by the statement
+	SharedBlksHit     int64   `json:"shared_blks_hit"`     // Total number of shared block cache hits by the statement
+	SharedBlksRead    int64   `json:"shared_blks_read"`    // Total number of shared blocks read by the statement
+	SharedBlksDirtied int64   `json:"shared_blks_dirtied"` // Total number of shared blocks dirtied by the statement
+	SharedBlksWritten int64   `json:"shared_blks_written"` // Total number of shared blocks written by the statement
+	LocalBlksHit      int64   `json:"local_blks_hit"`      // Total number of local block cache hits by the statement
+	LocalBlksRead     int64   `json:"local_blks_read"`     // Total number of local blocks read by the statement
+	LocalBlksDirtied  int64   `json:"local_blks_dirtied"`  // Total number of local blocks dirtied by the statement
+	LocalBlksWritten  int64   `json:"local_blks_written"`  // Total number of local blocks written by the statement
+	TempBlksRead      int64   `json:"temp_blks_read"`      // Total number of temp blocks read by the statement
+	TempBlksWritten   int64   `json:"temp_blks_written"`   // Total number of temp blocks written by the statement
+	BlkReadTime       float64 `json:"blk_read_time"`       // Total time the statement spent reading blocks, in milliseconds (if track_io_timing is enabled, otherwise zero)
+	BlkWriteTime      float64 `json:"blk_write_time"`      // Total time the statement spent writing blocks, in milliseconds (if track_io_timing is enabled, otherwise zero)
 }
