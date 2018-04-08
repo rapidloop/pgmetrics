@@ -55,6 +55,8 @@ Collection options:
       --omit=WHAT              do NOT collect the items specified as a comma-separated
                                    list of: "tables", "indexes", "sequences",
                                    "functions", "extensions", "triggers"
+      --sql-length=LIMIT       collect only first LIMIT characters of all SQL
+                                   queries (default: 500)
 
 Output options:
   -f, --format=FORMAT          output format; "human", or "json" (default: "human")
@@ -120,6 +122,7 @@ type options struct {
 	table      string
 	exclTable  string
 	omit       []string
+	sqlLength  uint
 	// output
 	format     string
 	output     string
@@ -148,6 +151,7 @@ func (o *options) defaults() {
 	o.table = ""
 	o.exclTable = ""
 	o.omit = nil
+	o.sqlLength = 500
 	// output
 	o.format = "human"
 	o.output = ""
@@ -213,6 +217,7 @@ func (o *options) parse() (args []string) {
 	s.StringVarLong(&o.table, "table", 'a', "")
 	s.StringVarLong(&o.exclTable, "exclude-table", 'A', "")
 	s.ListVarLong(&o.omit, "omit", 0, "")
+	s.UintVarLong(&o.sqlLength, "sql-length", 0, "")
 	// output
 	s.StringVarLong(&o.format, "format", 'f', "")
 	s.StringVarLong(&o.output, "output", 'o', "")

@@ -115,6 +115,7 @@ type collector struct {
 	rxExclSchema *regexp.Regexp
 	rxTable      *regexp.Regexp
 	rxExclTable  *regexp.Regexp
+	sqlLength    uint
 }
 
 func (c *collector) collect(db *sql.DB, o options) {
@@ -136,6 +137,9 @@ func (c *collector) collectFirst(db *sql.DB, o options) {
 	c.rxExclSchema, _ = getRegexp(o.exclSchema)
 	c.rxTable, _ = getRegexp(o.table)
 	c.rxExclTable, _ = getRegexp(o.exclTable)
+
+	// save sql length limit
+	c.sqlLength = o.sqlLength
 
 	// current time is the report start time
 	c.result.Metadata.At = time.Now().Unix()
@@ -719,13 +723,13 @@ func (c *collector) getActivityv96() {
 			COALESCE(EXTRACT(EPOCH FROM state_change)::bigint, 0),
 			COALESCE(wait_event_type, ''), COALESCE(wait_event, ''),
 			COALESCE(state, ''), COALESCE(backend_xid, ''),
-			COALESCE(backend_xmin, ''), COALESCE(query, '')
+			COALESCE(backend_xmin, ''), SUBSTR(COALESCE(query, ''), 0, $1)
 		  FROM pg_stat_activity`
 	if c.version >= 100000 {
 		q += " WHERE backend_type='client backend'"
 	}
 	q += " ORDER BY pid ASC"
-	rows, err := c.db.QueryContext(ctx, q)
+	rows, err := c.db.QueryContext(ctx, q, c.sqlLength)
 	if err != nil {
 		log.Fatalf("pg_stat_activity query failed: %v", err)
 	}
