@@ -371,8 +371,15 @@ BG Writer:
 	tw.write(fd, "    ")
 }
 
-func isWaiting(be *pgmetrics.Backend) bool {
-	return len(be.WaitEventType)+len(be.WaitEvent) > 0
+func isWaitingLock(be *pgmetrics.Backend) bool {
+	if be.WaitEventType == "waiting" && be.WaitEvent == "waiting" {
+		return true // before v9.6, see collector.getActivity94
+	}
+	return be.WaitEventType == "Lock"
+}
+
+func isWaitingOther(be *pgmetrics.Backend) bool {
+	return len(be.WaitEventType) > 0 && be.WaitEventType != "Lock" && be.WaitEventType != "waiting"
 }
 
 func reportBackends(fd io.Writer, tooLongSecs uint, result *pgmetrics.Model) {
@@ -381,10 +388,13 @@ func reportBackends(fd io.Writer, tooLongSecs uint, result *pgmetrics.Model) {
 	isTooLong := func(be *pgmetrics.Backend) bool {
 		return be.XactStart > 0 && result.Metadata.At-be.XactStart > int64(tooLongSecs)
 	}
-	var waiting, idlexact, toolong int
+	var waitingLocks, waitingOther, idlexact, toolong int
 	for _, be := range result.Backends {
-		if isWaiting(&be) {
-			waiting++
+		if isWaitingLock(&be) {
+			waitingLocks++
+		}
+		if isWaitingOther(&be) {
+			waitingOther++
 		}
 		if strings.HasPrefix(be.State, "idle in transaction") {
 			idlexact++
@@ -398,20 +408,37 @@ func reportBackends(fd io.Writer, tooLongSecs uint, result *pgmetrics.Model) {
 	fmt.Fprintf(fd, `
 Backends:
     Total Backends:      %d (%.1f%% of max %d)
-    Problematic:         %d waiting, %d xact too long, %d idle in xact`,
+    Problematic:         %d waiting on locks, %d waiting on other, %d xact too long, %d idle in xact`,
 		n, 100*safeDiv(int64(n), int64(max)), max,
-		waiting, toolong, idlexact,
+		waitingLocks, waitingOther, toolong, idlexact,
 	)
 
-	// waiting backends
-	if waiting > 0 {
+	// "waiting for locks" backends
+	if waitingLocks > 0 {
 		fmt.Fprint(fd, `
-    Waiting:
+    Waiting for Locks:
 `)
 		var tw tableWriter
 		tw.add("PID", "User", "App", "Client Addr", "Database", "Wait", "Query Start")
 		for _, be := range result.Backends {
-			if isWaiting(&be) {
+			if isWaitingLock(&be) {
+				tw.add(be.PID, be.RoleName, be.ApplicationName, be.ClientAddr,
+					be.DBName, be.WaitEventType+" / "+be.WaitEvent,
+					fmtTime(be.QueryStart))
+			}
+		}
+		tw.write(fd, "      ")
+	}
+
+	// "other waiting" backends
+	if waitingOther > 0 {
+		fmt.Fprint(fd, `
+    Other Waiting Backends:
+`)
+		var tw tableWriter
+		tw.add("PID", "User", "App", "Client Addr", "Database", "Wait", "Query Start")
+		for _, be := range result.Backends {
+			if isWaitingOther(&be) {
 				tw.add(be.PID, be.RoleName, be.ApplicationName, be.ClientAddr,
 					be.DBName, be.WaitEventType+" / "+be.WaitEvent,
 					fmtTime(be.QueryStart))
@@ -453,7 +480,7 @@ Backends:
 		tw.write(fd, "      ")
 	}
 
-	if waiting+idlexact+toolong == 0 {
+	if waitingOther+waitingLocks+idlexact+toolong == 0 {
 		fmt.Fprintln(fd)
 	}
 }
