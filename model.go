@@ -98,6 +98,28 @@ type Model struct {
 	Settings map[string]Setting `json:"settings"` // all settings and their values
 }
 
+// DatabaseByOID iterates over the databases in the model and returns the reference
+// to a Database that has the given oid. If there is no such database, it returns nil.
+func (m *Model) DatabaseByOID(oid int) *Database {
+	for i, d := range m.Databases {
+		if d.OID == oid {
+			return &m.Databases[i]
+		}
+	}
+	return nil
+}
+
+// RoleByOID iterates over the roles in the model and returns the reference
+// to a Role that has the given oid. If there is no such role, it returns nil.
+func (m *Model) RoleByOID(oid int) *Role {
+	for i, r := range m.Roles {
+		if r.OID == oid {
+			return &m.Roles[i]
+		}
+	}
+	return nil
+}
+
 // TableByName iterates over the tables in the model and returns the reference
 // to a Table that has the given database, schema and table names. If there is
 // no such table, it returns nil.

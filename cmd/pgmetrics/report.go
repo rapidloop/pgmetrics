@@ -697,8 +697,53 @@ Database #%d:
 				)
 			}
 			tw.write(fd, "      ")
+			gap = true
+		}
+
+		if ss := filterStatementsByDB(result, d.Name); len(ss) > 0 {
+			if gap {
+				fmt.Fprintln(fd)
+			}
+			fmt.Fprint(fd, `    Slow Queries:
+`)
+			var tw tableWriter
+			tw.add("Calls", "Avg Time", "Total Time", "Rows/Call", "Query")
+			for _, s := range ss {
+				var rpc int64
+				if s.Calls > 0 {
+					rpc = s.Rows / s.Calls
+				}
+				tw.add(
+					s.Calls,
+					prepmsec(s.TotalTime/float64(s.Calls)),
+					prepmsec(s.TotalTime),
+					rpc,
+					prepQ(s.Query),
+				)
+			}
+			tw.write(fd, "      ")
 		}
 	}
+}
+
+const stmtSQLDisplayLength = 50
+
+func prepQ(s string) string {
+	if len(s) > stmtSQLDisplayLength {
+		s = s[:stmtSQLDisplayLength]
+	}
+	return strings.Map(smap, s)
+}
+
+func smap(r rune) rune {
+	if r == '\r' || r == '\n' || r == '\t' {
+		return ' '
+	}
+	return r
+}
+
+func prepmsec(ms float64) string {
+	return time.Duration(1e6 * ms).Truncate(time.Millisecond).String()
 }
 
 func filterSequencesByDB(result *pgmetrics.Model, db string) (out []*pgmetrics.Sequence) {
@@ -736,6 +781,16 @@ func filterTriggersByDB(result *pgmetrics.Model, db string) (out []*pgmetrics.Tr
 		t := &result.DisabledTriggers[i]
 		if t.DBName == db {
 			out = append(out, t)
+		}
+	}
+	return
+}
+
+func filterStatementsByDB(result *pgmetrics.Model, db string) (out []*pgmetrics.Statement) {
+	for i := range result.Statements {
+		s := &result.Statements[i]
+		if s.DBName == db {
+			out = append(out, s)
 		}
 	}
 	return

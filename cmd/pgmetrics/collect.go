@@ -116,6 +116,7 @@ type collector struct {
 	rxTable      *regexp.Regexp
 	rxExclTable  *regexp.Regexp
 	sqlLength    uint
+	stmtsLimit   uint
 }
 
 func (c *collector) collect(db *sql.DB, o options) {
@@ -138,8 +139,9 @@ func (c *collector) collectFirst(db *sql.DB, o options) {
 	c.rxTable, _ = getRegexp(o.table)
 	c.rxExclTable, _ = getRegexp(o.exclTable)
 
-	// save sql length limit
+	// save sql length and statement limits
 	c.sqlLength = o.sqlLength
+	c.stmtsLimit = o.stmtsLimit
 
 	// current time is the report start time
 	c.result.Metadata.At = time.Now().Unix()
@@ -262,6 +264,9 @@ func (c *collector) collectDatabase(o options) {
 	}
 	if !arrayHas(o.omit, "tables") && !arrayHas(o.omit, "triggers") {
 		c.getDisabledTriggers()
+	}
+	if !arrayHas(o.omit, "statements") {
+		c.getStatements()
 	}
 	c.getBloat()
 }
@@ -723,7 +728,7 @@ func (c *collector) getActivityv96() {
 			COALESCE(EXTRACT(EPOCH FROM state_change)::bigint, 0),
 			COALESCE(wait_event_type, ''), COALESCE(wait_event, ''),
 			COALESCE(state, ''), COALESCE(backend_xid, ''),
-			COALESCE(backend_xmin, ''), SUBSTR(COALESCE(query, ''), 0, $1)
+			COALESCE(backend_xmin, ''), LEFT(COALESCE(query, ''), $1)
 		  FROM pg_stat_activity`
 	if c.version >= 100000 {
 		q += " WHERE backend_type='client backend'"
@@ -1262,6 +1267,53 @@ func (c *collector) getDisabledTriggers() {
 	}
 	if err := rows.Err(); err != nil {
 		log.Fatalf("pg_trigger/pg_proc query failed: %v", err)
+	}
+}
+
+func (c *collector) getStatements() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT userid, dbid, queryid, LEFT(query, $1), calls, total_time,
+			min_time, max_time, stddev_time, rows, shared_blks_hit,
+			shared_blks_read, shared_blks_dirtied, shared_blks_written,
+			local_blks_hit, local_blks_read, local_blks_dirtied,
+			local_blks_written, temp_blks_read, temp_blks_written,
+			blk_read_time, blk_write_time
+		  FROM pg_stat_statements
+		  ORDER BY total_time DESC
+		  LIMIT $2`
+	rows, err := c.db.QueryContext(ctx, q, c.sqlLength, c.stmtsLimit)
+	if err != nil {
+		// ignore any errors, pg_stat_statements extension may not be
+		// available
+		return
+	}
+	defer rows.Close()
+
+	c.result.Statements = make([]pgmetrics.Statement, 0, c.stmtsLimit)
+	for rows.Next() {
+		var s pgmetrics.Statement
+		if err := rows.Scan(&s.UserOID, &s.DBOID, &s.QueryID, &s.Query,
+			&s.Calls, &s.TotalTime, &s.MinTime, &s.MaxTime, &s.StddevTime,
+			&s.Rows, &s.SharedBlksHit, &s.SharedBlksRead, &s.SharedBlksDirtied,
+			&s.SharedBlksWritten, &s.LocalBlksHit, &s.LocalBlksRead,
+			&s.LocalBlksDirtied, &s.LocalBlksWritten, &s.TempBlksRead,
+			&s.TempBlksWritten, &s.BlkReadTime, &s.BlkWriteTime); err != nil {
+			log.Fatalf("pg_stat_statements scan failed: %v", err)
+		}
+		// UserName
+		if r := c.result.RoleByOID(s.UserOID); r != nil {
+			s.UserName = r.Name
+		}
+		// DBName
+		if d := c.result.DatabaseByOID(s.DBOID); d != nil {
+			s.DBName = d.Name
+		}
+		c.result.Statements = append(c.result.Statements, s)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_stat_statements failed: %v", err)
 	}
 }
 

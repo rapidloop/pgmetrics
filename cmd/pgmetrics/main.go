@@ -54,9 +54,11 @@ Collection options:
   -A, --exclude-table=REGEXP   do NOT collect from table(s) matching POSIX regexp
       --omit=WHAT              do NOT collect the items specified as a comma-separated
                                    list of: "tables", "indexes", "sequences",
-                                   "functions", "extensions", "triggers"
+                                   "functions", "extensions", "triggers", "statements"
       --sql-length=LIMIT       collect only first LIMIT characters of all SQL
                                    queries (default: 500)
+      --statements-limit=LIMIT collect only utmost LIMIT number of row from
+                                   pg_stat_statements (default: 100)
 
 Output options:
   -f, --format=FORMAT          output format; "human", or "json" (default: "human")
@@ -123,6 +125,7 @@ type options struct {
 	exclTable  string
 	omit       []string
 	sqlLength  uint
+	stmtsLimit uint
 	// output
 	format     string
 	output     string
@@ -152,6 +155,7 @@ func (o *options) defaults() {
 	o.exclTable = ""
 	o.omit = nil
 	o.sqlLength = 500
+	o.stmtsLimit = 100
 	// output
 	o.format = "human"
 	o.output = ""
@@ -218,6 +222,7 @@ func (o *options) parse() (args []string) {
 	s.StringVarLong(&o.exclTable, "exclude-table", 'A', "")
 	s.ListVarLong(&o.omit, "omit", 0, "")
 	s.UintVarLong(&o.sqlLength, "sql-length", 0, "")
+	s.UintVarLong(&o.stmtsLimit, "statements-limit", 0, "")
 	// output
 	s.StringVarLong(&o.format, "format", 'f', "")
 	s.StringVarLong(&o.output, "output", 'o', "")
@@ -277,7 +282,8 @@ func (o *options) parse() (args []string) {
 	}
 	for _, om := range o.omit {
 		if om != "tables" && om != "indexes" && om != "sequences" &&
-			om != "functions" && om != "extensions" && om != "triggers" {
+			om != "functions" && om != "extensions" && om != "triggers" &&
+			om != "statements" {
 			fmt.Fprintf(os.Stderr, "unknown item \"%s\" in --omit option\n", om)
 			printTry()
 			os.Exit(2)
