@@ -896,10 +896,25 @@ Table #%d in "%s":
 				continue
 			}
 			var tw tableWriter
-			tw.add("Index", "Cache Hits", "Scans", "Rows Read/Scan", "Rows Fetched/Scan")
+			tw.add("Index", "Size", "Bloat", "Cache Hits", "Scans", "Rows Read/Scan", "Rows Fetched/Scan")
 			for _, idx := range idxs {
+				var sz, bloat string
+				if idx.Size != -1 {
+					sz = humanize.IBytes(uint64(idx.Size))
+				}
+				if idx.Bloat != -1 {
+					if idx.Size != -1 {
+						bloat = fmt.Sprintf("%s (%.1f%%)",
+							humanize.IBytes(uint64(idx.Bloat)),
+							100*safeDiv(idx.Bloat, idx.Size))
+					} else {
+						bloat = humanize.IBytes(uint64(idx.Bloat))
+					}
+				}
 				tw.add(
 					idx.Name,
+					sz,
+					bloat,
 					fmtPct(idx.IdxBlksHit, idx.IdxBlksHit+idx.IdxBlksRead),
 					idx.IdxScan,
 					fmt.Sprintf("%.1f", safeDiv(idx.IdxTupRead, idx.IdxScan)),
