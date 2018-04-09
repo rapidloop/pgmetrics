@@ -40,7 +40,6 @@ Usage:
 
 General options:
   -t, --timeout=SECS           individual query timeout in seconds (default: 5)
-  -S, --no-sizes               don't collect tablespace and relation sizes
   -i, --input=FILE             don't connect to db, instead read and display
                                    this previously saved JSON file
   -V, --version                output version information, then exit
@@ -48,6 +47,7 @@ General options:
       --help=variables         list environment variables, then exit
 
 Collection options:
+  -S, --no-sizes               don't collect tablespace and relation sizes
   -c, --schema=REGEXP          collect only from schema(s) matching POSIX regexp
   -C, --exclude-schema=REGEXP  do NOT collect from schema(s) matching POSIX regexp
   -a, --table=REGEXP           collect only from table(s) matching POSIX regexp
