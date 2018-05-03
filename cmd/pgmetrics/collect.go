@@ -1294,7 +1294,8 @@ func (c *collector) getStatements() {
 	c.result.Statements = make([]pgmetrics.Statement, 0, c.stmtsLimit)
 	for rows.Next() {
 		var s pgmetrics.Statement
-		if err := rows.Scan(&s.UserOID, &s.DBOID, &s.QueryID, &s.Query,
+		var queryID sql.NullInt64
+		if err := rows.Scan(&s.UserOID, &s.DBOID, &queryID, &s.Query,
 			&s.Calls, &s.TotalTime, &s.MinTime, &s.MaxTime, &s.StddevTime,
 			&s.Rows, &s.SharedBlksHit, &s.SharedBlksRead, &s.SharedBlksDirtied,
 			&s.SharedBlksWritten, &s.LocalBlksHit, &s.LocalBlksRead,
@@ -1310,6 +1311,8 @@ func (c *collector) getStatements() {
 		if d := c.result.DatabaseByOID(s.DBOID); d != nil {
 			s.DBName = d.Name
 		}
+		// Query ID, set to 0 if null
+		s.QueryID = queryID.Int64
 		c.result.Statements = append(c.result.Statements, s)
 	}
 	if err := rows.Err(); err != nil {
