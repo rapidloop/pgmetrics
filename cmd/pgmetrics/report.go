@@ -47,17 +47,23 @@ PostgreSQL Cluster:
 		fmt.Fprintf(fd, `
     System Identifier:   %s
     Timeline:            %d
-    Last Checkpoint:     %s
-    Prior LSN:           %s
-    REDO LSN:            %s (%s since Prior)
-    Checkpoint LSN:      %s (%s since REDO)
-    Transaction IDs:     %d to %d (diff = %d)`,
+    Last Checkpoint:     %s`,
 			result.SystemIdentifier,
 			result.TimelineID,
 			fmtTimeAndSince(result.CheckpointTime),
-			result.PriorLSN,
-			result.RedoLSN, humanize.IBytes(uint64(sincePrior)),
-			result.CheckpointLSN, humanize.IBytes(uint64(sinceRedo)),
+		)
+		if result.PriorLSN != "" && result.RedoLSN != "" && result.CheckpointLSN != "" {
+			fmt.Fprintf(fd, `
+    Prior LSN:           %s
+    REDO LSN:            %s (%s since Prior)
+    Checkpoint LSN:      %s (%s since REDO)`,
+				result.PriorLSN,
+				result.RedoLSN, humanize.IBytes(uint64(sincePrior)),
+				result.CheckpointLSN, humanize.IBytes(uint64(sinceRedo)),
+			)
+		}
+		fmt.Fprintf(fd, `
+    Transaction IDs:     %d to %d (diff = %d)`,
 			result.OldestXid, result.NextXid-1,
 			result.NextXid-1-result.OldestXid,
 		)

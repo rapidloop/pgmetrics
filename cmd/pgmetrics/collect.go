@@ -438,7 +438,8 @@ func (c *collector) getReplicationv10() {
 		  ORDER BY pid ASC`
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
-		log.Fatalf("pg_stat_replication query failed: %v", err)
+		log.Printf("warning: pg_stat_replication query failed: %v", err)
+		return
 	}
 	defer rows.Close()
 
@@ -480,7 +481,8 @@ func (c *collector) getReplicationv9() {
 	}
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
-		log.Fatalf("pg_stat_replication query failed: %v", err)
+		log.Printf("warning: pg_stat_replication query failed: %v", err)
+		return
 	}
 	defer rows.Close()
 
@@ -518,7 +520,8 @@ func (c *collector) getWalReceiverv96() {
 		if err == sql.ErrNoRows {
 			return // not an error
 		}
-		log.Fatalf("pg_stat_wal_receiver query failed: %v", err)
+		log.Printf("warning: pg_stat_wal_receiver query failed: %v", err)
+		return
 	}
 
 	if msgSend.Valid && msgRecv.Valid {
@@ -544,7 +547,8 @@ func (c *collector) getAdminFuncv9() {
 	if err := c.db.QueryRowContext(ctx, q).Scan(&c.result.IsInRecovery,
 		&c.result.LastWALReceiveLSN, &c.result.LastWALReplayLSN,
 		&c.result.LastXActReplayTimestamp); err != nil {
-		log.Fatalf("error querying admin functions: %v", err)
+		log.Printf("warning: admin functions query failed: %v", err)
+		return
 	}
 
 	if c.result.IsInRecovery {
@@ -576,7 +580,8 @@ func (c *collector) getAdminFuncv10() {
 	if err := c.db.QueryRowContext(ctx, q).Scan(&c.result.IsInRecovery,
 		&c.result.LastWALReceiveLSN, &c.result.LastWALReplayLSN,
 		&c.result.LastXActReplayTimestamp); err != nil {
-		log.Fatalf("error querying admin functions: %v", err)
+		log.Printf("warning: admin functions query failed: %v", err)
+		return
 	}
 
 	if c.result.IsInRecovery {
@@ -688,6 +693,8 @@ func (c *collector) getControlCheckpointv96() {
 	} else {
 		c.result.NextXid = v
 	}
+
+	c.fixAuroraCheckpoint()
 }
 
 func (c *collector) getControlCheckpointv10() {
@@ -712,6 +719,18 @@ func (c *collector) getControlCheckpointv10() {
 		log.Fatal("bad xid in pg_control_checkpoint()).next_xid")
 	} else {
 		c.result.NextXid = v
+	}
+
+	c.fixAuroraCheckpoint()
+}
+
+func (c *collector) fixAuroraCheckpoint() {
+	// AWS Aurora reports {checkpoint,prior}_location as invalid LSNs. Reset
+	// them to empty strings instead.
+	if c.result.CheckpointLSN == "FFFFFFFF/FFFFFF00" || c.result.PriorLSN == "FFFFFFFF/FFFFFF00" {
+		c.result.CheckpointLSN = ""
+		c.result.RedoLSN = ""
+		c.result.PriorLSN = ""
 	}
 }
 
@@ -1212,7 +1231,8 @@ func (c *collector) getReplicationSlotsv94() {
 	}
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
-		log.Fatalf("pg_replication_slots query failed: %v", err)
+		log.Printf("warning: pg_replication_slots query failed: %v", err)
+		return
 	}
 	defer rows.Close()
 
