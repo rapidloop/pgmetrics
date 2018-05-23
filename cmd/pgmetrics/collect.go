@@ -189,7 +189,9 @@ func (c *collector) collectCluster(o options) {
 		c.getLastXactv95()
 	}
 
-	if c.version >= 100000 {
+	if c.version >= 110000 {
+		c.getControlCheckpointv11()
+	} else if c.version >= 100000 {
 		c.getControlCheckpointv10()
 	} else if c.version >= 90600 {
 		c.getControlCheckpointv96()
@@ -707,6 +709,33 @@ func (c *collector) getControlCheckpointv10() {
 		  FROM pg_control_checkpoint()`
 	var nextXid string // we'll strip out the epoch from next_xid
 	if err := c.db.QueryRowContext(ctx, q).Scan(&c.result.CheckpointLSN, &c.result.PriorLSN,
+		&c.result.RedoLSN, &c.result.TimelineID, &nextXid, &c.result.OldestXid,
+		&c.result.OldestActiveXid, &c.result.CheckpointTime); err != nil {
+		log.Fatalf("pg_control_checkpoint() failed: %v", err)
+	}
+
+	if pos := strings.IndexByte(nextXid, ':'); pos > -1 {
+		nextXid = nextXid[pos+1:]
+	}
+	if v, err := strconv.Atoi(nextXid); err != nil {
+		log.Fatal("bad xid in pg_control_checkpoint()).next_xid")
+	} else {
+		c.result.NextXid = v
+	}
+
+	c.fixAuroraCheckpoint()
+}
+
+func (c *collector) getControlCheckpointv11() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT checkpoint_lsn, redo_lsn, timeline_id,
+			next_xid, oldest_xid, oldest_active_xid,
+			COALESCE(EXTRACT(EPOCH FROM checkpoint_time)::bigint, 0)
+		  FROM pg_control_checkpoint()`
+	var nextXid string // we'll strip out the epoch from next_xid
+	if err := c.db.QueryRowContext(ctx, q).Scan(&c.result.CheckpointLSN,
 		&c.result.RedoLSN, &c.result.TimelineID, &nextXid, &c.result.OldestXid,
 		&c.result.OldestActiveXid, &c.result.CheckpointTime); err != nil {
 		log.Fatalf("pg_control_checkpoint() failed: %v", err)

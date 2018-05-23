@@ -61,6 +61,13 @@ PostgreSQL Cluster:
 				result.RedoLSN, humanize.IBytes(uint64(sincePrior)),
 				result.CheckpointLSN, humanize.IBytes(uint64(sinceRedo)),
 			)
+		} else if result.PriorLSN == "" && result.RedoLSN != "" && result.CheckpointLSN != "" {
+			fmt.Fprintf(fd, `
+    REDO LSN:            %s
+    Checkpoint LSN:      %s (%s since REDO)`,
+				result.RedoLSN,
+				result.CheckpointLSN, humanize.IBytes(uint64(sinceRedo)),
+			)
 		}
 		fmt.Fprintf(fd, `
     Transaction IDs:     %d to %d (diff = %d)`,
