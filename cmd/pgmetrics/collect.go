@@ -997,13 +997,20 @@ func (c *collector) getTables(fillSize bool) {
 			S.autoanalyze_count, IO.heap_blks_read, IO.heap_blks_hit,
 			COALESCE(IO.idx_blks_read, 0), COALESCE(IO.idx_blks_hit, 0),
 			COALESCE(IO.toast_blks_read, 0), COALESCE(IO.toast_blks_hit, 0),
-			COALESCE(IO.tidx_blks_read, 0), COALESCE(IO.tidx_blks_hit, 0)
+			COALESCE(IO.tidx_blks_read, 0), COALESCE(IO.tidx_blks_hit, 0),
+			C.relkind, C.relpersistence, C.relnatts, age(C.relfrozenxid),
+			C.relispartition
 		  FROM pg_stat_user_tables AS S
 			JOIN pg_statio_user_tables AS IO
 			ON S.relid = IO.relid
+			JOIN pg_class AS C
+			ON C.oid = S.relid
 		  ORDER BY S.relid ASC`
 	if c.version < 90400 { // n_mod_since_analyze only in v9.4+
 		q = strings.Replace(q, "S.n_mod_since_analyze", "0", 1)
+	}
+	if c.version < 100000 { // relispartition only in v10+
+		q = strings.Replace(q, "C.relispartition", "false", 1)
 	}
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
@@ -1021,7 +1028,9 @@ func (c *collector) getTables(fillSize bool) {
 			&t.LastAnalyze, &t.LastAutoanalyze, &t.VacuumCount,
 			&t.AutovacuumCount, &t.AnalyzeCount, &t.AutoanalyzeCount,
 			&t.HeapBlksRead, &t.HeapBlksHit, &t.IdxBlksRead, &t.IdxBlksHit,
-			&t.ToastBlksRead, &t.ToastBlksHit, &t.TidxBlksRead, &t.TidxBlksHit); err != nil {
+			&t.ToastBlksRead, &t.ToastBlksHit, &t.TidxBlksRead, &t.TidxBlksHit,
+			&t.RelKind, &t.RelPersistence, &t.RelNAtts, &t.AgeRelFrozenXid,
+			&t.RelIsPartition); err != nil {
 			log.Fatalf("pg_stat(io)_user_tables query failed: %v", err)
 		}
 		t.Size = -1  // will be filled in later if asked for
@@ -1049,9 +1058,14 @@ func (c *collector) getIndexes(fillSize bool) {
 	q := `SELECT S.relid, S.indexrelid, S.schemaname, S.relname, S.indexrelname,
 			current_database(), S.idx_scan, S.idx_tup_read, S.idx_tup_fetch,
 			pg_stat_get_blocks_fetched(S.indexrelid) - pg_stat_get_blocks_hit(S.indexrelid) AS idx_blks_read,
-			pg_stat_get_blocks_hit(S.indexrelid) AS idx_blks_hit
-		  FROM pg_stat_user_indexes AS S
-		  ORDER BY s.relid ASC`
+			pg_stat_get_blocks_hit(S.indexrelid) AS idx_blks_hit,
+			C.relnatts, AM.amname
+		FROM pg_stat_user_indexes AS S
+			JOIN pg_class AS C
+			ON S.indexrelid = C.oid
+			JOIN pg_am AS AM
+			ON C.relam = AM.oid
+		ORDER BY S.relid ASC`
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
 		log.Fatalf("pg_stat_user_indexes query failed: %v", err)
@@ -1064,7 +1078,7 @@ func (c *collector) getIndexes(fillSize bool) {
 		if err := rows.Scan(&idx.TableOID, &idx.OID, &idx.SchemaName,
 			&idx.TableName, &idx.Name, &idx.DBName, &idx.IdxScan,
 			&idx.IdxTupRead, &idx.IdxTupFetch, &idx.IdxBlksRead,
-			&idx.IdxBlksHit); err != nil {
+			&idx.IdxBlksHit, &idx.RelNAtts, &idx.AMName); err != nil {
 			log.Fatalf("pg_stat_user_indexes query failed: %v", err)
 		}
 		idx.Size = -1  // will be filled in later if asked for

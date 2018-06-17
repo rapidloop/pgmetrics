@@ -18,9 +18,10 @@ package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
+//    1.2 - more table and index attributes
 //    1.1 - added NotificationQueueUsage and Statements
 //    1.0 - initial release
-const ModelSchemaVersion = "1.1"
+const ModelSchemaVersion = "1.2"
 
 // Model contains the entire information collected by a single run of
 // pgmetrics. It can be converted to and from json without loss of
@@ -296,6 +297,12 @@ type Table struct {
 	TidxBlksHit      int64  `json:"tidx_blks_hit"`
 	Size             int64  `json:"size"`
 	Bloat            int64  `json:"bloat"`
+	// rest of the fields added in schema version 1.2
+	RelKind         string `json:"relkind"`
+	RelPersistence  string `json:"relpersistence"`
+	RelNAtts        int    `json:"relnatts"`
+	AgeRelFrozenXid int    `json:"age_relfrozenxid"`
+	RelIsPartition  bool   `json:"relispartition"`
 }
 
 type Index struct {
@@ -312,6 +319,9 @@ type Index struct {
 	IdxBlksHit  int64  `json:"idx_blks_hit"`
 	Size        int64  `json:"size"`
 	Bloat       int64  `json:"bloat"`
+	// rest of the fields added in schema version 1.2
+	RelNAtts int    `json:"relnatts"`
+	AMName   string `json:"amname"`
 }
 
 type Sequence struct {
