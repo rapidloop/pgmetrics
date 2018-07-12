@@ -405,7 +405,7 @@ func main() {
 		result = &obj
 		f.Close()
 	} else {
-		result = collect(o, args)
+		result = Collect(o, args)
 	}
 
 	// process it
