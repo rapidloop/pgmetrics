@@ -48,7 +48,7 @@ func makeKV(k, v string) string {
 	return fmt.Sprintf("%s=%s ", k, v2)
 }
 
-func collect(o options, args []string) *pgmetrics.Model {
+func Collect(o options, args []string) *pgmetrics.Model {
 	// form connection string
 	var connstr string
 	if len(o.host) > 0 {
