@@ -24,12 +24,10 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-
-	"github.com/rapidloop/pgmetrics"
 )
 
 func (c *collector) collectSystem(o CollectConfig) {
-	c.result.System = &pgmetrics.SystemMetrics{}
+	c.result.System = &SystemMetrics{}
 
 	// 1. disk space (bytes free/used/reserved, inodes free/used) for each tablespace
 	for i := range c.result.Tablespaces {
@@ -49,7 +47,7 @@ func (c *collector) collectSystem(o CollectConfig) {
 	c.result.System.Hostname, _ = os.Hostname()
 }
 
-func (c *collector) doStatFS(t *pgmetrics.Tablespace) {
+func (c *collector) doStatFS(t *Tablespace) {
 	path := t.Location
 	if len(path) == 0 {
 		return
