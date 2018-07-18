@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package main
+package pgmetrics
 
 import (
 	"bufio"
@@ -28,7 +28,7 @@ import (
 	"github.com/rapidloop/pgmetrics"
 )
 
-func (c *collector) collectSystem(o options) {
+func (c *collector) collectSystem(o CollectConfig) {
 	c.result.System = &pgmetrics.SystemMetrics{}
 
 	// 1. disk space (bytes free/used/reserved, inodes free/used) for each tablespace

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package main
+package pgmetrics
 
 import (
 	"context"
@@ -30,7 +30,6 @@ import (
 	"time"
 
 	"github.com/lib/pq"
-	"github.com/rapidloop/pgmetrics"
 )
 
 // See https://www.postgresql.org/docs/current/static/libpq-connect.html#LIBPQ-CONNSTRING
@@ -48,25 +47,53 @@ func makeKV(k, v string) string {
 	return fmt.Sprintf("%s=%s ", k, v2)
 }
 
-func collect(o Options, args []string) *pgmetrics.Model {
+type CollectConfig struct {
+	// general
+	TimeoutSec uint
+	NoSizes    bool
+
+	// collection
+	Schema     string
+	ExclSchema string
+	Table      string
+	ExclTable  string
+	SqlLength  uint
+	StmtsLimit uint
+	Omit       []string
+
+	// connection
+	Host     string
+	Port     uint16
+	User     string
+	Password string
+}
+
+func GetRegexp(r string) (*regexp.Regexp, error) {
+	if len(r) == 0 {
+		return nil, nil
+	}
+	return regexp.CompilePOSIX(r)
+}
+
+func Collect(o CollectConfig, args []string) *Model {
 	// form connection string
 	var connstr string
-	if len(o.host) > 0 {
-		connstr += makeKV("host", o.host)
+	if len(o.Host) > 0 {
+		connstr += makeKV("host", o.Host)
 	}
-	connstr += makeKV("port", strconv.Itoa(int(o.port)))
-	if len(o.user) > 0 {
-		connstr += makeKV("user", o.user)
+	connstr += makeKV("port", strconv.Itoa(int(o.Port)))
+	if len(o.User) > 0 {
+		connstr += makeKV("user", o.User)
 	}
-	if len(o.password) > 0 {
-		connstr += makeKV("password", o.password)
+	if len(o.Password) > 0 {
+		connstr += makeKV("password", o.Password)
 	}
 	if os.Getenv("PGSSLMODE") == "" {
 		connstr += makeKV("sslmode", "disable")
 	}
 	connstr += makeKV("application_name", "pgmetrics")
 	connstr += makeKV("lock_timeout", "50") // 50 msec. Just fail fast on locks.
-	connstr += makeKV("statement_timeout", strconv.Itoa(int(o.timeoutSec)*1000))
+	connstr += makeKV("statement_timeout", strconv.Itoa(int(o.TimeoutSec)*1000))
 
 	// collect from 1 or more DBs
 	c := &collector{}
@@ -81,7 +108,7 @@ func collect(o Options, args []string) *pgmetrics.Model {
 	return &c.result
 }
 
-func collectFromDB(connstr string, c *collector, o Options) {
+func collectFromDB(connstr string, c *collector, o CollectConfig) {
 	// connect
 	db, err := sql.Open("postgres", connstr)
 	if err != nil {
@@ -90,7 +117,7 @@ func collectFromDB(connstr string, c *collector, o Options) {
 	defer db.Close()
 
 	// ping
-	t := time.Duration(o.timeoutSec) * time.Second
+	t := time.Duration(o.TimeoutSec) * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), t)
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {
@@ -105,7 +132,7 @@ func collectFromDB(connstr string, c *collector, o Options) {
 
 type collector struct {
 	db           *sql.DB
-	result       pgmetrics.Model
+	result       Model
 	version      int    // integer form of server version
 	local        bool   // have we connected to the server on the same machine?
 	dataDir      string // the PGDATA dir, valid only if local
@@ -119,7 +146,7 @@ type collector struct {
 	stmtsLimit   uint
 }
 
-func (c *collector) collect(db *sql.DB, o Options) {
+func (c *collector) collect(db *sql.DB, o CollectConfig) {
 	if !c.beenHere {
 		c.collectFirst(db, o)
 		c.beenHere = true
@@ -128,24 +155,24 @@ func (c *collector) collect(db *sql.DB, o Options) {
 	}
 }
 
-func (c *collector) collectFirst(db *sql.DB, o Options) {
+func (c *collector) collectFirst(db *sql.DB, o CollectConfig) {
 	c.db = db
-	c.timeout = time.Duration(o.timeoutSec) * time.Second
+	c.timeout = time.Duration(o.TimeoutSec) * time.Second
 
 	// Compile regexes for schema and table, if any. The values are already
 	// checked for validity.
-	c.rxSchema, _ = getRegexp(o.schema)
-	c.rxExclSchema, _ = getRegexp(o.exclSchema)
-	c.rxTable, _ = getRegexp(o.table)
-	c.rxExclTable, _ = getRegexp(o.exclTable)
+	c.rxSchema, _ = GetRegexp(o.Schema)
+	c.rxExclSchema, _ = GetRegexp(o.ExclSchema)
+	c.rxTable, _ = GetRegexp(o.Table)
+	c.rxExclTable, _ = GetRegexp(o.ExclTable)
 
 	// save sql length and statement limits
-	c.sqlLength = o.sqlLength
-	c.stmtsLimit = o.stmtsLimit
+	c.sqlLength = o.SqlLength
+	c.stmtsLimit = o.StmtsLimit
 
 	// current time is the report start time
 	c.result.Metadata.At = time.Now().Unix()
-	c.result.Metadata.Version = pgmetrics.ModelSchemaVersion
+	c.result.Metadata.Version = ModelSchemaVersion
 
 	// get settings and other configuration
 	c.getSettings()
@@ -172,13 +199,13 @@ func (c *collector) collectFirst(db *sql.DB, o Options) {
 	c.collectDatabase(o)
 }
 
-func (c *collector) collectNext(db *sql.DB, o Options) {
+func (c *collector) collectNext(db *sql.DB, o CollectConfig) {
 	c.db = db
 	c.collectDatabase(o)
 }
 
 // cluster-level info and stats
-func (c *collector) collectCluster(o Options) {
+func (c *collector) collectCluster(o CollectConfig) {
 	c.getStartTime()
 
 	if c.version >= 90600 {
@@ -231,8 +258,8 @@ func (c *collector) collectCluster(o Options) {
 		c.getVacuumProgress()
 	}
 
-	c.getDatabases(!o.noSizes)
-	c.getTablespaces(!o.noSizes)
+	c.getDatabases(!o.NoSizes)
+	c.getTablespaces(!o.NoSizes)
 
 	if c.version >= 90400 {
 		c.getReplicationSlotsv94()
@@ -247,27 +274,27 @@ func (c *collector) collectCluster(o Options) {
 }
 
 // info and stats for the current database
-func (c *collector) collectDatabase(o Options) {
+func (c *collector) collectDatabase(o CollectConfig) {
 	c.getCurrentDatabase()
-	if !arrayHas(o.omit, "tables") {
-		c.getTables(!o.noSizes)
+	if !arrayHas(o.Omit, "tables") {
+		c.getTables(!o.NoSizes)
 	}
-	if !arrayHas(o.omit, "tables") && !arrayHas(o.omit, "indexes") {
-		c.getIndexes(!o.noSizes)
+	if !arrayHas(o.Omit, "tables") && !arrayHas(o.Omit, "indexes") {
+		c.getIndexes(!o.NoSizes)
 	}
-	if !arrayHas(o.omit, "sequences") {
+	if !arrayHas(o.Omit, "sequences") {
 		c.getSequences()
 	}
-	if !arrayHas(o.omit, "functions") {
+	if !arrayHas(o.Omit, "functions") {
 		c.getUserFunctions()
 	}
-	if !arrayHas(o.omit, "extensions") {
+	if !arrayHas(o.Omit, "extensions") {
 		c.getExtensions()
 	}
-	if !arrayHas(o.omit, "tables") && !arrayHas(o.omit, "triggers") {
+	if !arrayHas(o.Omit, "tables") && !arrayHas(o.Omit, "triggers") {
 		c.getDisabledTriggers()
 	}
-	if !arrayHas(o.omit, "statements") {
+	if !arrayHas(o.Omit, "statements") {
 		c.getStatements()
 	}
 	c.getBloat()
@@ -343,9 +370,9 @@ func (c *collector) getSettings() {
 	}
 	defer rows.Close()
 
-	c.result.Settings = make(map[string]pgmetrics.Setting)
+	c.result.Settings = make(map[string]Setting)
 	for rows.Next() {
-		var s pgmetrics.Setting
+		var s Setting
 		var name, sf, sl string
 		if err := rows.Scan(&name, &s.Setting, &s.BootVal, &s.Source, &sf, &sl); err != nil {
 			log.Fatalf("pg_settings query failed: %v", err)
@@ -446,7 +473,7 @@ func (c *collector) getReplicationv10() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var r pgmetrics.ReplicationOut
+		var r ReplicationOut
 		var backendXmin sql.NullInt64
 		if err := rows.Scan(&r.RoleName, &r.ApplicationName, &r.ClientAddr,
 			&r.BackendStart, &backendXmin, &r.State, &r.SentLSN, &r.WriteLSN,
@@ -489,7 +516,7 @@ func (c *collector) getReplicationv9() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var r pgmetrics.ReplicationOut
+		var r ReplicationOut
 		var backendXmin sql.NullInt64
 		if err := rows.Scan(&r.RoleName, &r.ApplicationName, &r.ClientAddr,
 			&r.BackendStart, &backendXmin, &r.State, &r.SentLSN, &r.WriteLSN,
@@ -514,7 +541,7 @@ func (c *collector) getWalReceiverv96() {
 			COALESCE(EXTRACT(EPOCH FROM latest_end_time)::bigint, 0),
 			COALESCE(slot_name, ''), conninfo
 		  FROM pg_stat_wal_receiver`
-	var r pgmetrics.ReplicationIn
+	var r ReplicationIn
 	var msgSend, msgRecv pq.NullTime
 	if err := c.db.QueryRowContext(ctx, q).Scan(&r.Status, &r.ReceiveStartLSN, &r.ReceiveStartTLI,
 		&r.ReceivedLSN, &r.ReceivedTLI, &msgSend, &msgRecv,
@@ -601,7 +628,7 @@ func (c *collector) getAdminFuncv10() {
 	}
 }
 
-func (c *collector) fillTablespaceSize(t *pgmetrics.Tablespace) {
+func (c *collector) fillTablespaceSize(t *Tablespace) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -611,7 +638,7 @@ func (c *collector) fillTablespaceSize(t *pgmetrics.Tablespace) {
 	}
 }
 
-func (c *collector) fillDatabaseSize(d *pgmetrics.Database) {
+func (c *collector) fillDatabaseSize(d *Database) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -621,7 +648,7 @@ func (c *collector) fillDatabaseSize(d *pgmetrics.Database) {
 	}
 }
 
-func (c *collector) fillTableSize(t *pgmetrics.Table) {
+func (c *collector) fillTableSize(t *Table) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -631,7 +658,7 @@ func (c *collector) fillTableSize(t *pgmetrics.Table) {
 	}
 }
 
-func (c *collector) fillIndexSize(idx *pgmetrics.Index) {
+func (c *collector) fillIndexSize(idx *Index) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -789,7 +816,7 @@ func (c *collector) getActivityv96() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var b pgmetrics.Backend
+		var b Backend
 		if err := rows.Scan(&b.DBName, &b.RoleName, &b.ApplicationName,
 			&b.PID, &b.ClientAddr, &b.BackendStart, &b.XactStart, &b.QueryStart,
 			&b.StateChange, &b.WaitEventType, &b.WaitEvent, &b.State,
@@ -826,7 +853,7 @@ func (c *collector) getActivityv94() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var b pgmetrics.Backend
+		var b Backend
 		var waiting bool
 		if err := rows.Scan(&b.DBName, &b.RoleName, &b.ApplicationName,
 			&b.PID, &b.ClientAddr, &b.BackendStart, &b.XactStart, &b.QueryStart,
@@ -867,7 +894,7 @@ func (c *collector) getActivityv93() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var b pgmetrics.Backend
+		var b Backend
 		var waiting bool
 		if err := rows.Scan(&b.DBName, &b.RoleName, &b.ApplicationName,
 			&b.PID, &b.ClientAddr, &b.BackendStart, &b.XactStart, &b.QueryStart,
@@ -907,7 +934,7 @@ func (c *collector) getDatabases(fillSize bool) {
 	defer rows.Close()
 
 	for rows.Next() {
-		var d pgmetrics.Database
+		var d Database
 		if err := rows.Scan(&d.OID, &d.Name, &d.DatDBA, &d.DatTablespace,
 			&d.DatConnLimit, &d.AgeDatFrozenXid, &d.NumBackends, &d.XactCommit,
 			&d.XactRollback, &d.BlksRead, &d.BlksHit, &d.TupReturned,
@@ -946,7 +973,7 @@ func (c *collector) getTablespaces(fillSize bool) {
 	defer rows.Close()
 
 	for rows.Next() {
-		var t pgmetrics.Tablespace
+		var t Tablespace
 		if err := rows.Scan(&t.OID, &t.Name, &t.Owner, &t.Location); err != nil {
 			log.Fatalf("pg_tablespace query failed: %v", err)
 		}
@@ -1013,7 +1040,7 @@ func (c *collector) getTables(fillSize bool) {
 
 	startIdx := len(c.result.Tables)
 	for rows.Next() {
-		var t pgmetrics.Table
+		var t Table
 		if err := rows.Scan(&t.OID, &t.SchemaName, &t.Name, &t.DBName,
 			&t.SeqScan, &t.SeqTupRead, &t.IdxScan, &t.IdxTupFetch, &t.NTupIns,
 			&t.NTupUpd, &t.NTupDel, &t.NTupHotUpd, &t.NLiveTup, &t.NDeadTup,
@@ -1060,7 +1087,7 @@ func (c *collector) getIndexes(fillSize bool) {
 
 	startIdx := len(c.result.Indexes)
 	for rows.Next() {
-		var idx pgmetrics.Index
+		var idx Index
 		if err := rows.Scan(&idx.TableOID, &idx.OID, &idx.SchemaName,
 			&idx.TableName, &idx.Name, &idx.DBName, &idx.IdxScan,
 			&idx.IdxTupRead, &idx.IdxTupFetch, &idx.IdxBlksRead,
@@ -1100,7 +1127,7 @@ func (c *collector) getSequences() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var s pgmetrics.Sequence
+		var s Sequence
 		if err := rows.Scan(&s.OID, &s.SchemaName, &s.Name, &s.DBName,
 			&s.BlksRead, &s.BlksHit); err != nil {
 			log.Fatalf("pg_statio_user_sequences query failed: %v", err)
@@ -1129,7 +1156,7 @@ func (c *collector) getUserFunctions() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var f pgmetrics.UserFunction
+		var f UserFunction
 		if err := rows.Scan(&f.OID, &f.SchemaName, &f.Name, &f.DBName,
 			&f.Calls, &f.TotalTime, &f.SelfTime); err != nil {
 			log.Fatalf("pg_stat_user_functions query failed: %v", err)
@@ -1159,7 +1186,7 @@ func (c *collector) getVacuumProgress() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var p pgmetrics.VacuumProgressBackend
+		var p VacuumProgressBackend
 		if err := rows.Scan(&p.DBName, &p.TableOID, &p.Phase, &p.HeapBlksTotal,
 			&p.HeapBlksScanned, &p.HeapBlksVacuumed, &p.IndexVacuumCount,
 			&p.MaxDeadTuples, &p.NumDeadTuples); err != nil {
@@ -1191,7 +1218,7 @@ func (c *collector) getExtensions() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var e pgmetrics.Extension
+		var e Extension
 		if err := rows.Scan(&e.Name, &e.DBName, &e.DefaultVersion,
 			&e.InstalledVersion, &e.Comment); err != nil {
 			log.Fatalf("pg_available_extensions query failed: %v", err)
@@ -1225,7 +1252,7 @@ func (c *collector) getRoles() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var r pgmetrics.Role
+		var r Role
 		var validUntil float64
 		if err := rows.Scan(&r.OID, &r.Name, &r.Rolsuper, &r.Rolinherit,
 			&r.Rolcreaterole, &r.Rolcreatedb, &r.Rolcanlogin, &r.Rolreplication,
@@ -1266,7 +1293,7 @@ func (c *collector) getReplicationSlotsv94() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var rs pgmetrics.ReplicationSlot
+		var rs ReplicationSlot
 		var xmin, cXmin sql.NullInt64
 		var rlsn, cflsn sql.NullString
 		if err := rows.Scan(&rs.SlotName, &rs.Plugin, &rs.SlotType,
@@ -1300,7 +1327,7 @@ func (c *collector) getDisabledTriggers() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var tg pgmetrics.Trigger
+		var tg Trigger
 		var tgrelid int
 		if err := rows.Scan(&tg.OID, &tgrelid, &tg.Name, &tg.ProcName); err != nil {
 			log.Fatalf("pg_trigger/pg_proc query failed: %v", err)
@@ -1340,9 +1367,9 @@ func (c *collector) getStatements() {
 	}
 	defer rows.Close()
 
-	c.result.Statements = make([]pgmetrics.Statement, 0, c.stmtsLimit)
+	c.result.Statements = make([]Statement, 0, c.stmtsLimit)
 	for rows.Next() {
-		var s pgmetrics.Statement
+		var s Statement
 		var queryID sql.NullInt64
 		if err := rows.Scan(&s.UserOID, &s.DBOID, &queryID, &s.Query,
 			&s.Calls, &s.TotalTime, &s.MinTime, &s.MaxTime, &s.StddevTime,

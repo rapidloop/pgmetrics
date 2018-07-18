@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-package main
+package pgmetrics
 
-func (c *collector) collectSystem(o Options) {
+func (c *collector) collectSystem(o CollectConfig) {
 	// Not implemented for Darwin yet.
 }

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-package main
+package pgmetrics
 
-func (c *collector) collectSystem(o options) {
+func (c *collector) collectSystem(o CollectConfig) {
 	// Not implemented for FreeBSD yet.
 }
