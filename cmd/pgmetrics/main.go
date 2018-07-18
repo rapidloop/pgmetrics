@@ -23,8 +23,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"os/user"
-	"strconv"
 
 	"github.com/howeyc/gopass"
 	"github.com/pborman/getopt"
@@ -111,7 +109,6 @@ var ignoreEnvs = []string{
 
 type options struct {
 	pgmetrics.CollectConfig
-
 	// general
 	input     string
 	help      string
@@ -128,49 +125,16 @@ type options struct {
 
 func (o *options) defaults() {
 	// general
-	o.CollectConfig.TimeoutSec = 5
-	o.CollectConfig.NoSizes = false
 	o.input = ""
 	o.help = ""
 	o.helpShort = false
 	o.version = false
-	// collection
-	o.CollectConfig.Schema = ""
-	o.CollectConfig.ExclSchema = ""
-	o.CollectConfig.Table = ""
-	o.CollectConfig.ExclTable = ""
-	o.CollectConfig.Omit = nil
-	o.CollectConfig.SqlLength = 500
-	o.CollectConfig.StmtsLimit = 100
 	// output
 	o.format = "human"
 	o.output = ""
 	o.tooLongSec = 60
 	o.nopager = false
-	// connection
-	if h := os.Getenv("PGHOST"); len(h) > 0 {
-		o.CollectConfig.Host = h
-	} else {
-		o.CollectConfig.Host = "/var/run/postgresql"
-	}
-	if ps := os.Getenv("PGPORT"); len(ps) > 0 {
-		if p, err := strconv.Atoi(ps); err == nil && p > 0 && p < 65536 {
-			o.CollectConfig.Port = uint16(p)
-		} else {
-			o.CollectConfig.Port = 5432
-		}
-	} else {
-		o.CollectConfig.Port = 5432
-	}
-	if u := os.Getenv("PGUSER"); len(u) > 0 {
-		o.CollectConfig.User = u
-	} else if u, err := user.Current(); err == nil && u != nil {
-		o.CollectConfig.User = u.Username
-	} else {
-		o.CollectConfig.User = ""
-	}
 	o.passNone = false
-	o.CollectConfig.Password = ""
 }
 
 func (o *options) usage(code int) {

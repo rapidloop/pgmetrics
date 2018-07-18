@@ -23,6 +23,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"os/user"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -66,6 +67,49 @@ type CollectConfig struct {
 	Port     uint16
 	User     string
 	Password string
+}
+
+func DefaultCollectConfig() CollectConfig {
+	cc := CollectConfig{}
+	// general
+	cc.TimeoutSec = 5
+	cc.NoSizes = false
+
+	// collection
+	cc.Schema = ""
+	cc.ExclSchema = ""
+	cc.Table = ""
+	cc.ExclTable = ""
+	cc.Omit = nil
+	cc.SqlLength = 500
+	cc.StmtsLimit = 100
+
+	// connection
+	if h := os.Getenv("PGHOST"); len(h) > 0 {
+		cc.Host = h
+	} else {
+		cc.Host = "/var/run/postgresql"
+	}
+	if ps := os.Getenv("PGPORT"); len(ps) > 0 {
+		if p, err := strconv.Atoi(ps); err == nil && p > 0 && p < 65536 {
+			cc.Port = uint16(p)
+		} else {
+			cc.Port = 5432
+		}
+	} else {
+		cc.Port = 5432
+	}
+	if u := os.Getenv("PGUSER"); len(u) > 0 {
+		cc.User = u
+	} else if u, err := user.Current(); err == nil && u != nil {
+		cc.User = u.Username
+	} else {
+		cc.User = ""
+	}
+
+	cc.Password = ""
+
+	return cc
 }
 
 func GetRegexp(r string) (*regexp.Regexp, error) {
