@@ -110,7 +110,7 @@ var ignoreEnvs = []string{
 	"PGLOCALEDIR",
 }
 
-type options struct {
+type Options struct {
 	// general
 	timeoutSec uint
 	noSizes    bool
@@ -140,7 +140,7 @@ type options struct {
 	password string
 }
 
-func (o *options) defaults() {
+func (o *Options) defaults() {
 	// general
 	o.timeoutSec = 5
 	o.noSizes = false
@@ -187,7 +187,7 @@ func (o *options) defaults() {
 	o.password = ""
 }
 
-func (o *options) usage(code int) {
+func (o *Options) usage(code int) {
 	fp := os.Stdout
 	if code != 0 {
 		fp = os.Stderr
@@ -204,7 +204,7 @@ func printTry() {
 	fmt.Fprintf(os.Stderr, "Try \"pgmetrics --help\" for more information.\n")
 }
 
-func (o *options) parse() (args []string) {
+func (o *Options) parse() (args []string) {
 	// make getopt
 	s := getopt.New()
 	s.SetUsage(printTry)
@@ -315,7 +315,7 @@ func getRegexp(r string) (*regexp.Regexp, error) {
 	return regexp.CompilePOSIX(r)
 }
 
-func writeTo(fd io.Writer, o options, result *pgmetrics.Model) {
+func writeTo(fd io.Writer, o Options, result *pgmetrics.Model) {
 	if o.format == "json" {
 		writeJSONTo(fd, result)
 	} else {
@@ -331,7 +331,7 @@ func writeJSONTo(fd io.Writer, result *pgmetrics.Model) {
 	}
 }
 
-func process(result *pgmetrics.Model, o options, args []string) {
+func process(result *pgmetrics.Model, o Options, args []string) {
 	if o.output == "-" {
 		o.output = ""
 	}
@@ -376,7 +376,7 @@ func main() {
 		os.Unsetenv(e)
 	}
 
-	var o options
+	var o Options
 	o.defaults()
 	args := o.parse()
 	if !o.passNone && len(o.input) == 0 {

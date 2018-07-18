@@ -27,7 +27,7 @@ import (
 	"github.com/rapidloop/pgmetrics"
 )
 
-func writeHumanTo(fd io.Writer, o options, result *pgmetrics.Model) {
+func writeHumanTo(fd io.Writer, o Options, result *pgmetrics.Model) {
 	version := getVersion(result)
 	sincePrior, _ := lsnDiff(result.RedoLSN, result.PriorLSN)
 	sinceRedo, _ := lsnDiff(result.CheckpointLSN, result.RedoLSN)

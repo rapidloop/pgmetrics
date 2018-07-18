@@ -48,7 +48,7 @@ func makeKV(k, v string) string {
 	return fmt.Sprintf("%s=%s ", k, v2)
 }
 
-func collect(o options, args []string) *pgmetrics.Model {
+func collect(o Options, args []string) *pgmetrics.Model {
 	// form connection string
 	var connstr string
 	if len(o.host) > 0 {
@@ -81,7 +81,7 @@ func collect(o options, args []string) *pgmetrics.Model {
 	return &c.result
 }
 
-func collectFromDB(connstr string, c *collector, o options) {
+func collectFromDB(connstr string, c *collector, o Options) {
 	// connect
 	db, err := sql.Open("postgres", connstr)
 	if err != nil {
@@ -119,7 +119,7 @@ type collector struct {
 	stmtsLimit   uint
 }
 
-func (c *collector) collect(db *sql.DB, o options) {
+func (c *collector) collect(db *sql.DB, o Options) {
 	if !c.beenHere {
 		c.collectFirst(db, o)
 		c.beenHere = true
@@ -128,7 +128,7 @@ func (c *collector) collect(db *sql.DB, o options) {
 	}
 }
 
-func (c *collector) collectFirst(db *sql.DB, o options) {
+func (c *collector) collectFirst(db *sql.DB, o Options) {
 	c.db = db
 	c.timeout = time.Duration(o.timeoutSec) * time.Second
 
@@ -172,13 +172,13 @@ func (c *collector) collectFirst(db *sql.DB, o options) {
 	c.collectDatabase(o)
 }
 
-func (c *collector) collectNext(db *sql.DB, o options) {
+func (c *collector) collectNext(db *sql.DB, o Options) {
 	c.db = db
 	c.collectDatabase(o)
 }
 
 // cluster-level info and stats
-func (c *collector) collectCluster(o options) {
+func (c *collector) collectCluster(o Options) {
 	c.getStartTime()
 
 	if c.version >= 90600 {
@@ -247,7 +247,7 @@ func (c *collector) collectCluster(o options) {
 }
 
 // info and stats for the current database
-func (c *collector) collectDatabase(o options) {
+func (c *collector) collectDatabase(o Options) {
 	c.getCurrentDatabase()
 	if !arrayHas(o.omit, "tables") {
 		c.getTables(!o.noSizes)

@@ -16,6 +16,6 @@
 
 package main
 
-func (c *collector) collectSystem(o options) {
+func (c *collector) collectSystem(o Options) {
 	// Not implemented for Darwin yet.
 }
