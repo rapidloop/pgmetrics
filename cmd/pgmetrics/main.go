@@ -23,6 +23,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"regexp"
 
 	"github.com/howeyc/gopass"
 	"github.com/pborman/getopt"
@@ -154,6 +155,11 @@ func printTry() {
 	fmt.Fprintf(os.Stderr, "Try \"pgmetrics --help\" for more information.\n")
 }
 
+func getRegexp(r string) error {
+	_, err := regexp.CompilePOSIX(r)
+	return err
+}
+
 func (o *options) parse() (args []string) {
 	// make getopt
 	s := getopt.New()
@@ -210,22 +216,22 @@ func (o *options) parse() (args []string) {
 		printTry()
 		os.Exit(2)
 	}
-	if _, err := pgmetrics.GetRegexp(o.CollectConfig.Schema); err != nil {
+	if err := getRegexp(o.CollectConfig.Schema); err != nil {
 		fmt.Fprintf(os.Stderr, "bad POSIX regular expression for -c/--schema: %v\n", err)
 		printTry()
 		os.Exit(2)
 	}
-	if _, err := pgmetrics.GetRegexp(o.CollectConfig.ExclSchema); err != nil {
+	if err := getRegexp(o.CollectConfig.ExclSchema); err != nil {
 		fmt.Fprintf(os.Stderr, "bad POSIX regular expression for -C/--exclude-schema: %v\n", err)
 		printTry()
 		os.Exit(2)
 	}
-	if _, err := pgmetrics.GetRegexp(o.CollectConfig.Table); err != nil {
+	if err := getRegexp(o.CollectConfig.Table); err != nil {
 		fmt.Fprintf(os.Stderr, "bad POSIX regular expression for -a/--table: %v\n", err)
 		printTry()
 		os.Exit(2)
 	}
-	if _, err := pgmetrics.GetRegexp(o.CollectConfig.ExclTable); err != nil {
+	if err := getRegexp(o.CollectConfig.ExclTable); err != nil {
 		fmt.Fprintf(os.Stderr, "bad POSIX regular expression for -A/--exclude-table: %v\n", err)
 		printTry()
 		os.Exit(2)

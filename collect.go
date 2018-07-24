@@ -112,11 +112,11 @@ func DefaultCollectConfig() CollectConfig {
 	return cc
 }
 
-func GetRegexp(r string) (*regexp.Regexp, error) {
-	if len(r) == 0 {
-		return nil, nil
+func GetRegexp(r string) (rx *regexp.Regexp) {
+	if len(r) > 0 {
+		rx, _ = regexp.CompilePOSIX(r) // ignore errors, already checked
 	}
-	return regexp.CompilePOSIX(r)
+	return
 }
 
 func Collect(o CollectConfig, args []string) *Model {
@@ -205,10 +205,10 @@ func (c *collector) collectFirst(db *sql.DB, o CollectConfig) {
 
 	// Compile regexes for schema and table, if any. The values are already
 	// checked for validity.
-	c.rxSchema, _ = GetRegexp(o.Schema)
-	c.rxExclSchema, _ = GetRegexp(o.ExclSchema)
-	c.rxTable, _ = GetRegexp(o.Table)
-	c.rxExclTable, _ = GetRegexp(o.ExclTable)
+	c.rxSchema = GetRegexp(o.Schema)
+	c.rxExclSchema = GetRegexp(o.ExclSchema)
+	c.rxTable = GetRegexp(o.Table)
+	c.rxExclTable = GetRegexp(o.ExclTable)
 
 	// save sql length and statement limits
 	c.sqlLength = o.SqlLength
