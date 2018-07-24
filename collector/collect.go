@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package pgmetrics
+package collector
 
 import (
 	"context"
@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+	"github.com/rapidloop/pgmetrics"
 )
 
 // See https://www.postgresql.org/docs/current/static/libpq-connect.html#LIBPQ-CONNSTRING
@@ -119,7 +120,7 @@ func GetRegexp(r string) (rx *regexp.Regexp) {
 	return
 }
 
-func Collect(o CollectConfig, args []string) *Model {
+func Collect(o CollectConfig, args []string) *pgmetrics.Model {
 	// form connection string
 	var connstr string
 	if len(o.Host) > 0 {
@@ -176,7 +177,7 @@ func collectFromDB(connstr string, c *collector, o CollectConfig) {
 
 type collector struct {
 	db           *sql.DB
-	result       Model
+	result       pgmetrics.Model
 	version      int    // integer form of server version
 	local        bool   // have we connected to the server on the same machine?
 	dataDir      string // the PGDATA dir, valid only if local
@@ -216,7 +217,7 @@ func (c *collector) collectFirst(db *sql.DB, o CollectConfig) {
 
 	// current time is the report start time
 	c.result.Metadata.At = time.Now().Unix()
-	c.result.Metadata.Version = ModelSchemaVersion
+	c.result.Metadata.Version = pgmetrics.ModelSchemaVersion
 
 	// get settings and other configuration
 	c.getSettings()
@@ -414,9 +415,9 @@ func (c *collector) getSettings() {
 	}
 	defer rows.Close()
 
-	c.result.Settings = make(map[string]Setting)
+	c.result.Settings = make(map[string]pgmetrics.Setting)
 	for rows.Next() {
-		var s Setting
+		var s pgmetrics.Setting
 		var name, sf, sl string
 		if err := rows.Scan(&name, &s.Setting, &s.BootVal, &s.Source, &sf, &sl); err != nil {
 			log.Fatalf("pg_settings query failed: %v", err)
@@ -517,7 +518,7 @@ func (c *collector) getReplicationv10() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var r ReplicationOut
+		var r pgmetrics.ReplicationOut
 		var backendXmin sql.NullInt64
 		if err := rows.Scan(&r.RoleName, &r.ApplicationName, &r.ClientAddr,
 			&r.BackendStart, &backendXmin, &r.State, &r.SentLSN, &r.WriteLSN,
@@ -560,7 +561,7 @@ func (c *collector) getReplicationv9() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var r ReplicationOut
+		var r pgmetrics.ReplicationOut
 		var backendXmin sql.NullInt64
 		if err := rows.Scan(&r.RoleName, &r.ApplicationName, &r.ClientAddr,
 			&r.BackendStart, &backendXmin, &r.State, &r.SentLSN, &r.WriteLSN,
@@ -585,7 +586,7 @@ func (c *collector) getWalReceiverv96() {
 			COALESCE(EXTRACT(EPOCH FROM latest_end_time)::bigint, 0),
 			COALESCE(slot_name, ''), conninfo
 		  FROM pg_stat_wal_receiver`
-	var r ReplicationIn
+	var r pgmetrics.ReplicationIn
 	var msgSend, msgRecv pq.NullTime
 	if err := c.db.QueryRowContext(ctx, q).Scan(&r.Status, &r.ReceiveStartLSN, &r.ReceiveStartTLI,
 		&r.ReceivedLSN, &r.ReceivedTLI, &msgSend, &msgRecv,
@@ -672,7 +673,7 @@ func (c *collector) getAdminFuncv10() {
 	}
 }
 
-func (c *collector) fillTablespaceSize(t *Tablespace) {
+func (c *collector) fillTablespaceSize(t *pgmetrics.Tablespace) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -682,7 +683,7 @@ func (c *collector) fillTablespaceSize(t *Tablespace) {
 	}
 }
 
-func (c *collector) fillDatabaseSize(d *Database) {
+func (c *collector) fillDatabaseSize(d *pgmetrics.Database) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -692,7 +693,7 @@ func (c *collector) fillDatabaseSize(d *Database) {
 	}
 }
 
-func (c *collector) fillTableSize(t *Table) {
+func (c *collector) fillTableSize(t *pgmetrics.Table) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -702,7 +703,7 @@ func (c *collector) fillTableSize(t *Table) {
 	}
 }
 
-func (c *collector) fillIndexSize(idx *Index) {
+func (c *collector) fillIndexSize(idx *pgmetrics.Index) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -860,7 +861,7 @@ func (c *collector) getActivityv96() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var b Backend
+		var b pgmetrics.Backend
 		if err := rows.Scan(&b.DBName, &b.RoleName, &b.ApplicationName,
 			&b.PID, &b.ClientAddr, &b.BackendStart, &b.XactStart, &b.QueryStart,
 			&b.StateChange, &b.WaitEventType, &b.WaitEvent, &b.State,
@@ -897,7 +898,7 @@ func (c *collector) getActivityv94() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var b Backend
+		var b pgmetrics.Backend
 		var waiting bool
 		if err := rows.Scan(&b.DBName, &b.RoleName, &b.ApplicationName,
 			&b.PID, &b.ClientAddr, &b.BackendStart, &b.XactStart, &b.QueryStart,
@@ -938,7 +939,7 @@ func (c *collector) getActivityv93() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var b Backend
+		var b pgmetrics.Backend
 		var waiting bool
 		if err := rows.Scan(&b.DBName, &b.RoleName, &b.ApplicationName,
 			&b.PID, &b.ClientAddr, &b.BackendStart, &b.XactStart, &b.QueryStart,
@@ -978,7 +979,7 @@ func (c *collector) getDatabases(fillSize bool) {
 	defer rows.Close()
 
 	for rows.Next() {
-		var d Database
+		var d pgmetrics.Database
 		if err := rows.Scan(&d.OID, &d.Name, &d.DatDBA, &d.DatTablespace,
 			&d.DatConnLimit, &d.AgeDatFrozenXid, &d.NumBackends, &d.XactCommit,
 			&d.XactRollback, &d.BlksRead, &d.BlksHit, &d.TupReturned,
@@ -1017,7 +1018,7 @@ func (c *collector) getTablespaces(fillSize bool) {
 	defer rows.Close()
 
 	for rows.Next() {
-		var t Tablespace
+		var t pgmetrics.Tablespace
 		if err := rows.Scan(&t.OID, &t.Name, &t.Owner, &t.Location); err != nil {
 			log.Fatalf("pg_tablespace query failed: %v", err)
 		}
@@ -1084,7 +1085,7 @@ func (c *collector) getTables(fillSize bool) {
 
 	startIdx := len(c.result.Tables)
 	for rows.Next() {
-		var t Table
+		var t pgmetrics.Table
 		if err := rows.Scan(&t.OID, &t.SchemaName, &t.Name, &t.DBName,
 			&t.SeqScan, &t.SeqTupRead, &t.IdxScan, &t.IdxTupFetch, &t.NTupIns,
 			&t.NTupUpd, &t.NTupDel, &t.NTupHotUpd, &t.NLiveTup, &t.NDeadTup,
@@ -1131,7 +1132,7 @@ func (c *collector) getIndexes(fillSize bool) {
 
 	startIdx := len(c.result.Indexes)
 	for rows.Next() {
-		var idx Index
+		var idx pgmetrics.Index
 		if err := rows.Scan(&idx.TableOID, &idx.OID, &idx.SchemaName,
 			&idx.TableName, &idx.Name, &idx.DBName, &idx.IdxScan,
 			&idx.IdxTupRead, &idx.IdxTupFetch, &idx.IdxBlksRead,
@@ -1171,7 +1172,7 @@ func (c *collector) getSequences() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var s Sequence
+		var s pgmetrics.Sequence
 		if err := rows.Scan(&s.OID, &s.SchemaName, &s.Name, &s.DBName,
 			&s.BlksRead, &s.BlksHit); err != nil {
 			log.Fatalf("pg_statio_user_sequences query failed: %v", err)
@@ -1200,7 +1201,7 @@ func (c *collector) getUserFunctions() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var f UserFunction
+		var f pgmetrics.UserFunction
 		if err := rows.Scan(&f.OID, &f.SchemaName, &f.Name, &f.DBName,
 			&f.Calls, &f.TotalTime, &f.SelfTime); err != nil {
 			log.Fatalf("pg_stat_user_functions query failed: %v", err)
@@ -1230,7 +1231,7 @@ func (c *collector) getVacuumProgress() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var p VacuumProgressBackend
+		var p pgmetrics.VacuumProgressBackend
 		if err := rows.Scan(&p.DBName, &p.TableOID, &p.Phase, &p.HeapBlksTotal,
 			&p.HeapBlksScanned, &p.HeapBlksVacuumed, &p.IndexVacuumCount,
 			&p.MaxDeadTuples, &p.NumDeadTuples); err != nil {
@@ -1262,7 +1263,7 @@ func (c *collector) getExtensions() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var e Extension
+		var e pgmetrics.Extension
 		if err := rows.Scan(&e.Name, &e.DBName, &e.DefaultVersion,
 			&e.InstalledVersion, &e.Comment); err != nil {
 			log.Fatalf("pg_available_extensions query failed: %v", err)
@@ -1296,7 +1297,7 @@ func (c *collector) getRoles() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var r Role
+		var r pgmetrics.Role
 		var validUntil float64
 		if err := rows.Scan(&r.OID, &r.Name, &r.Rolsuper, &r.Rolinherit,
 			&r.Rolcreaterole, &r.Rolcreatedb, &r.Rolcanlogin, &r.Rolreplication,
@@ -1337,7 +1338,7 @@ func (c *collector) getReplicationSlotsv94() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var rs ReplicationSlot
+		var rs pgmetrics.ReplicationSlot
 		var xmin, cXmin sql.NullInt64
 		var rlsn, cflsn sql.NullString
 		if err := rows.Scan(&rs.SlotName, &rs.Plugin, &rs.SlotType,
@@ -1371,7 +1372,7 @@ func (c *collector) getDisabledTriggers() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var tg Trigger
+		var tg pgmetrics.Trigger
 		var tgrelid int
 		if err := rows.Scan(&tg.OID, &tgrelid, &tg.Name, &tg.ProcName); err != nil {
 			log.Fatalf("pg_trigger/pg_proc query failed: %v", err)
@@ -1411,9 +1412,9 @@ func (c *collector) getStatements() {
 	}
 	defer rows.Close()
 
-	c.result.Statements = make([]Statement, 0, c.stmtsLimit)
+	c.result.Statements = make([]pgmetrics.Statement, 0, c.stmtsLimit)
 	for rows.Next() {
-		var s Statement
+		var s pgmetrics.Statement
 		var queryID sql.NullInt64
 		if err := rows.Scan(&s.UserOID, &s.DBOID, &queryID, &s.Query,
 			&s.Calls, &s.TotalTime, &s.MinTime, &s.MaxTime, &s.StddevTime,

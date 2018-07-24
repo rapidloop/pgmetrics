@@ -28,6 +28,7 @@ import (
 	"github.com/howeyc/gopass"
 	"github.com/pborman/getopt"
 	"github.com/rapidloop/pgmetrics"
+	"github.com/rapidloop/pgmetrics/collector"
 	"golang.org/x/crypto/ssh/terminal"
 )
 
@@ -109,7 +110,7 @@ var ignoreEnvs = []string{
 }
 
 type options struct {
-	pgmetrics.CollectConfig
+	collector.CollectConfig
 	// general
 	input     string
 	help      string
@@ -354,7 +355,7 @@ func main() {
 		result = &obj
 		f.Close()
 	} else {
-		result = pgmetrics.Collect(o.CollectConfig, args)
+		result = collector.Collect(o.CollectConfig, args)
 	}
 
 	// process it

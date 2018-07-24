@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-package pgmetrics
+package collector
 
 func (c *collector) collectSystem(o CollectConfig) {
-	// Not implemented for FreeBSD yet.
+	// Not implemented for Darwin yet.
 }
