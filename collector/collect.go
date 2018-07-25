@@ -113,7 +113,7 @@ func DefaultCollectConfig() CollectConfig {
 	return cc
 }
 
-func GetRegexp(r string) (rx *regexp.Regexp) {
+func getRegexp(r string) (rx *regexp.Regexp) {
 	if len(r) > 0 {
 		rx, _ = regexp.CompilePOSIX(r) // ignore errors, already checked
 	}
@@ -206,10 +206,10 @@ func (c *collector) collectFirst(db *sql.DB, o CollectConfig) {
 
 	// Compile regexes for schema and table, if any. The values are already
 	// checked for validity.
-	c.rxSchema = GetRegexp(o.Schema)
-	c.rxExclSchema = GetRegexp(o.ExclSchema)
-	c.rxTable = GetRegexp(o.Table)
-	c.rxExclTable = GetRegexp(o.ExclTable)
+	c.rxSchema = getRegexp(o.Schema)
+	c.rxExclSchema = getRegexp(o.ExclSchema)
+	c.rxTable = getRegexp(o.Table)
+	c.rxExclTable = getRegexp(o.ExclTable)
 
 	// save sql length and statement limits
 	c.sqlLength = o.SqlLength

@@ -156,9 +156,11 @@ func printTry() {
 	fmt.Fprintf(os.Stderr, "Try \"pgmetrics --help\" for more information.\n")
 }
 
-func getRegexp(r string) error {
-	_, err := regexp.CompilePOSIX(r)
-	return err
+func getRegexp(r string) (err error) {
+	if len(r) > 0 {
+		_, err = regexp.CompilePOSIX(r)
+	}
+	return
 }
 
 func (o *options) parse() (args []string) {
