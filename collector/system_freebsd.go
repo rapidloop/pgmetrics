@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-package main
+package collector
 
-func (c *collector) collectSystem(o options) {
-	// Not implemented for windows yet.
+func (c *collector) collectSystem(o CollectConfig) {
+	// Not implemented for FreeBSD yet.
 }
