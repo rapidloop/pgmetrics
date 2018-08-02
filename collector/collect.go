@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package main
+package collector
 
 import (
 	"context"
@@ -23,6 +23,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"os/user"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -48,32 +49,122 @@ func makeKV(k, v string) string {
 	return fmt.Sprintf("%s=%s ", k, v2)
 }
 
-func collect(o options, args []string) *pgmetrics.Model {
+// CollectConfig is a bunch of options passed to the Collect() function to
+// specify which metrics to collect and how.
+type CollectConfig struct {
+	// general
+	TimeoutSec uint
+	NoSizes    bool
+
+	// collection
+	Schema     string
+	ExclSchema string
+	Table      string
+	ExclTable  string
+	SQLLength  uint
+	StmtsLimit uint
+	Omit       []string
+
+	// connection
+	Host     string
+	Port     uint16
+	User     string
+	Password string
+}
+
+// DefaultCollectConfig returns a CollectConfig initialized with default values.
+// Some environment variables are consulted.
+func DefaultCollectConfig() CollectConfig {
+	cc := CollectConfig{
+		// ------------------ general
+		TimeoutSec: 5,
+		//NoSizes: false,
+
+		// ------------------ collection
+		//Schema: "",
+		//ExclSchema: "",
+		//Table: "",
+		//ExclTable: "",
+		//Omit: nil,
+		SQLLength:  500,
+		StmtsLimit: 100,
+
+		// ------------------ connection
+		//Password: "",
+	}
+
+	// connection: host
+	if h := os.Getenv("PGHOST"); len(h) > 0 {
+		cc.Host = h
+	} else {
+		cc.Host = "/var/run/postgresql"
+	}
+
+	// connection: port
+	if ps := os.Getenv("PGPORT"); len(ps) > 0 {
+		if p, err := strconv.Atoi(ps); err == nil && p > 0 && p < 65536 {
+			cc.Port = uint16(p)
+		} else {
+			cc.Port = 5432
+		}
+	} else {
+		cc.Port = 5432
+	}
+
+	// connection: user
+	if u := os.Getenv("PGUSER"); len(u) > 0 {
+		cc.User = u
+	} else if u, err := user.Current(); err == nil && u != nil {
+		cc.User = u.Username
+	} else {
+		cc.User = ""
+	}
+
+	return cc
+}
+
+func getRegexp(r string) (rx *regexp.Regexp) {
+	if len(r) > 0 {
+		rx, _ = regexp.CompilePOSIX(r) // ignore errors, already checked
+	}
+	return
+}
+
+// Collect actually performs the metrics collection, based on the given options.
+// If database names are specified, it connects to each in turn and accumulates
+// results. If none are specified, the connection is attempted without a
+// 'dbname' keyword (usually tries to connect to a database with same name
+// as the user).
+//
+// Ideally, this should return (*pgmetrics.Model, error). But for now, it does
+// a log.Fatal(). This will be rectified in the future, and
+// backwards-compatibility will be broken when that happens. You've been warned.
+func Collect(o CollectConfig, dbnames []string) *pgmetrics.Model {
 	// form connection string
 	var connstr string
-	if len(o.host) > 0 {
-		connstr += makeKV("host", o.host)
+	if len(o.Host) > 0 {
+		connstr += makeKV("host", o.Host)
 	}
-	connstr += makeKV("port", strconv.Itoa(int(o.port)))
-	if len(o.user) > 0 {
-		connstr += makeKV("user", o.user)
+	connstr += makeKV("port", strconv.Itoa(int(o.Port)))
+	if len(o.User) > 0 {
+		connstr += makeKV("user", o.User)
 	}
-	if len(o.password) > 0 {
-		connstr += makeKV("password", o.password)
+	if len(o.Password) > 0 {
+		connstr += makeKV("password", o.Password)
 	}
 	if os.Getenv("PGSSLMODE") == "" {
 		connstr += makeKV("sslmode", "disable")
 	}
 	connstr += makeKV("application_name", "pgmetrics")
 	connstr += makeKV("lock_timeout", "50") // 50 msec. Just fail fast on locks.
-	connstr += makeKV("statement_timeout", strconv.Itoa(int(o.timeoutSec)*1000))
+	connstr += makeKV("statement_timeout", strconv.Itoa(int(o.TimeoutSec)*1000))
 
 	// collect from 1 or more DBs
 	c := &collector{}
-	if len(args) == 0 {
+	if len(dbnames) == 0 {
 		collectFromDB(connstr, c, o)
 	} else {
-		for _, dbname := range args {
+		for _, dbname := range dbnames {
 			collectFromDB(connstr+makeKV("dbname", dbname), c, o)
 		}
 	}
@@ -81,7 +172,7 @@ func collect(o options, args []string) *pgmetrics.Model {
 	return &c.result
 }
 
-func collectFromDB(connstr string, c *collector, o options) {
+func collectFromDB(connstr string, c *collector, o CollectConfig) {
 	// connect
 	db, err := sql.Open("postgres", connstr)
 	if err != nil {
@@ -90,7 +181,7 @@ func collectFromDB(connstr string, c *collector, o options) {
 	defer db.Close()
 
 	// ping
-	t := time.Duration(o.timeoutSec) * time.Second
+	t := time.Duration(o.TimeoutSec) * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), t)
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {
@@ -119,7 +210,7 @@ type collector struct {
 	stmtsLimit   uint
 }
 
-func (c *collector) collect(db *sql.DB, o options) {
+func (c *collector) collect(db *sql.DB, o CollectConfig) {
 	if !c.beenHere {
 		c.collectFirst(db, o)
 		c.beenHere = true
@@ -128,20 +219,20 @@ func (c *collector) collect(db *sql.DB, o options) {
 	}
 }
 
-func (c *collector) collectFirst(db *sql.DB, o options) {
+func (c *collector) collectFirst(db *sql.DB, o CollectConfig) {
 	c.db = db
-	c.timeout = time.Duration(o.timeoutSec) * time.Second
+	c.timeout = time.Duration(o.TimeoutSec) * time.Second
 
 	// Compile regexes for schema and table, if any. The values are already
 	// checked for validity.
-	c.rxSchema, _ = getRegexp(o.schema)
-	c.rxExclSchema, _ = getRegexp(o.exclSchema)
-	c.rxTable, _ = getRegexp(o.table)
-	c.rxExclTable, _ = getRegexp(o.exclTable)
+	c.rxSchema = getRegexp(o.Schema)
+	c.rxExclSchema = getRegexp(o.ExclSchema)
+	c.rxTable = getRegexp(o.Table)
+	c.rxExclTable = getRegexp(o.ExclTable)
 
 	// save sql length and statement limits
-	c.sqlLength = o.sqlLength
-	c.stmtsLimit = o.stmtsLimit
+	c.sqlLength = o.SQLLength
+	c.stmtsLimit = o.StmtsLimit
 
 	// current time is the report start time
 	c.result.Metadata.At = time.Now().Unix()
@@ -172,13 +263,13 @@ func (c *collector) collectFirst(db *sql.DB, o options) {
 	c.collectDatabase(o)
 }
 
-func (c *collector) collectNext(db *sql.DB, o options) {
+func (c *collector) collectNext(db *sql.DB, o CollectConfig) {
 	c.db = db
 	c.collectDatabase(o)
 }
 
 // cluster-level info and stats
-func (c *collector) collectCluster(o options) {
+func (c *collector) collectCluster(o CollectConfig) {
 	c.getStartTime()
 
 	if c.version >= 90600 {
@@ -231,8 +322,8 @@ func (c *collector) collectCluster(o options) {
 		c.getVacuumProgress()
 	}
 
-	c.getDatabases(!o.noSizes)
-	c.getTablespaces(!o.noSizes)
+	c.getDatabases(!o.NoSizes)
+	c.getTablespaces(!o.NoSizes)
 
 	if c.version >= 90400 {
 		c.getReplicationSlotsv94()
@@ -247,27 +338,27 @@ func (c *collector) collectCluster(o options) {
 }
 
 // info and stats for the current database
-func (c *collector) collectDatabase(o options) {
+func (c *collector) collectDatabase(o CollectConfig) {
 	c.getCurrentDatabase()
-	if !arrayHas(o.omit, "tables") {
-		c.getTables(!o.noSizes)
+	if !arrayHas(o.Omit, "tables") {
+		c.getTables(!o.NoSizes)
 	}
-	if !arrayHas(o.omit, "tables") && !arrayHas(o.omit, "indexes") {
-		c.getIndexes(!o.noSizes)
+	if !arrayHas(o.Omit, "tables") && !arrayHas(o.Omit, "indexes") {
+		c.getIndexes(!o.NoSizes)
 	}
-	if !arrayHas(o.omit, "sequences") {
+	if !arrayHas(o.Omit, "sequences") {
 		c.getSequences()
 	}
-	if !arrayHas(o.omit, "functions") {
+	if !arrayHas(o.Omit, "functions") {
 		c.getUserFunctions()
 	}
-	if !arrayHas(o.omit, "extensions") {
+	if !arrayHas(o.Omit, "extensions") {
 		c.getExtensions()
 	}
-	if !arrayHas(o.omit, "tables") && !arrayHas(o.omit, "triggers") {
+	if !arrayHas(o.Omit, "tables") && !arrayHas(o.Omit, "triggers") {
 		c.getDisabledTriggers()
 	}
-	if !arrayHas(o.omit, "statements") {
+	if !arrayHas(o.Omit, "statements") {
 		c.getStatements()
 	}
 	c.getBloat()
