@@ -23,13 +23,12 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"os/user"
 	"regexp"
-	"strconv"
 
 	"github.com/howeyc/gopass"
 	"github.com/pborman/getopt"
 	"github.com/rapidloop/pgmetrics"
+	"github.com/rapidloop/pgmetrics/collector"
 	"golang.org/x/crypto/ssh/terminal"
 )
 
@@ -111,80 +110,37 @@ var ignoreEnvs = []string{
 }
 
 type options struct {
+	// collection options
+	collector.CollectConfig
 	// general
-	timeoutSec uint
-	noSizes    bool
-	input      string
-	help       string
-	helpShort  bool
-	version    bool
-	// collection
-	schema     string
-	exclSchema string
-	table      string
-	exclTable  string
-	omit       []string
-	sqlLength  uint
-	stmtsLimit uint
+	input     string
+	help      string
+	helpShort bool
+	version   bool
 	// output
 	format     string
 	output     string
 	tooLongSec uint
 	nopager    bool
 	// connection
-	host     string
-	port     uint16
-	user     string
 	passNone bool
-	// non-command-line stuff
-	password string
 }
 
 func (o *options) defaults() {
+	// collection options
+	o.CollectConfig = collector.DefaultCollectConfig()
 	// general
-	o.timeoutSec = 5
-	o.noSizes = false
 	o.input = ""
 	o.help = ""
 	o.helpShort = false
 	o.version = false
-	// collection
-	o.schema = ""
-	o.exclSchema = ""
-	o.table = ""
-	o.exclTable = ""
-	o.omit = nil
-	o.sqlLength = 500
-	o.stmtsLimit = 100
 	// output
 	o.format = "human"
 	o.output = ""
 	o.tooLongSec = 60
 	o.nopager = false
 	// connection
-	if h := os.Getenv("PGHOST"); len(h) > 0 {
-		o.host = h
-	} else {
-		o.host = "/var/run/postgresql"
-	}
-	if ps := os.Getenv("PGPORT"); len(ps) > 0 {
-		if p, err := strconv.Atoi(ps); err == nil && p > 0 && p < 65536 {
-			o.port = uint16(p)
-		} else {
-			o.port = 5432
-		}
-	} else {
-		o.port = 5432
-	}
-	if u := os.Getenv("PGUSER"); len(u) > 0 {
-		o.user = u
-	} else if u, err := user.Current(); err == nil && u != nil {
-		o.user = u.Username
-	} else {
-		o.user = ""
-	}
 	o.passNone = false
-	o.password = ""
 }
 
 func (o *options) usage(code int) {
@@ -193,7 +149,7 @@ func (o *options) usage(code int) {
 		fp = os.Stderr
 	}
 	if o.helpShort || code != 0 || o.help == "short" {
-		fmt.Fprintf(fp, usage, o.host, o.port, o.user)
+		fmt.Fprintf(fp, usage, o.CollectConfig.Host, o.CollectConfig.Port, o.CollectConfig.User)
 	} else if o.help == "variables" {
 		fmt.Fprint(fp, variables)
 	}
@@ -204,34 +160,41 @@ func printTry() {
 	fmt.Fprintf(os.Stderr, "Try \"pgmetrics --help\" for more information.\n")
 }
 
+func getRegexp(r string) (err error) {
+	if len(r) > 0 {
+		_, err = regexp.CompilePOSIX(r)
+	}
+	return
+}
+
 func (o *options) parse() (args []string) {
 	// make getopt
 	s := getopt.New()
 	s.SetUsage(printTry)
 	s.SetProgram("pgmetrics")
 	// general
-	s.UintVarLong(&o.timeoutSec, "timeout", 't', "")
-	s.BoolVarLong(&o.noSizes, "no-sizes", 'S', "")
+	s.UintVarLong(&o.CollectConfig.TimeoutSec, "timeout", 't', "")
+	s.BoolVarLong(&o.CollectConfig.NoSizes, "no-sizes", 'S', "")
 	s.StringVarLong(&o.input, "input", 'i', "")
 	help := s.StringVarLong(&o.help, "help", '?', "").SetOptional()
 	s.BoolVarLong(&o.version, "version", 'V', "").SetFlag()
 	// collection
-	s.StringVarLong(&o.schema, "schema", 'c', "")
-	s.StringVarLong(&o.exclSchema, "exclude-schema", 'C', "")
-	s.StringVarLong(&o.table, "table", 'a', "")
-	s.StringVarLong(&o.exclTable, "exclude-table", 'A', "")
-	s.ListVarLong(&o.omit, "omit", 0, "")
-	s.UintVarLong(&o.sqlLength, "sql-length", 0, "")
-	s.UintVarLong(&o.stmtsLimit, "statements-limit", 0, "")
+	s.StringVarLong(&o.CollectConfig.Schema, "schema", 'c', "")
+	s.StringVarLong(&o.CollectConfig.ExclSchema, "exclude-schema", 'C', "")
+	s.StringVarLong(&o.CollectConfig.Table, "table", 'a', "")
+	s.StringVarLong(&o.CollectConfig.ExclTable, "exclude-table", 'A', "")
+	s.ListVarLong(&o.CollectConfig.Omit, "omit", 0, "")
+	s.UintVarLong(&o.CollectConfig.SQLLength, "sql-length", 0, "")
+	s.UintVarLong(&o.CollectConfig.StmtsLimit, "statements-limit", 0, "")
 	// output
 	s.StringVarLong(&o.format, "format", 'f', "")
 	s.StringVarLong(&o.output, "output", 'o', "")
 	s.UintVarLong(&o.tooLongSec, "toolong", 'l', "")
 	s.BoolVarLong(&o.nopager, "no-pager", 0, "").SetFlag()
 	// connection
-	s.StringVarLong(&o.host, "host", 'h', "")
-	s.Uint16VarLong(&o.port, "port", 'p', "")
-	s.StringVarLong(&o.user, "username", 'U', "")
+	s.StringVarLong(&o.CollectConfig.Host, "host", 'h', "")
+	s.Uint16VarLong(&o.CollectConfig.Port, "port", 'p', "")
+	s.StringVarLong(&o.CollectConfig.User, "username", 'U', "")
 	s.BoolVarLong(&o.passNone, "no-password", 0, "")
 
 	// parse
@@ -250,37 +213,37 @@ func (o *options) parse() (args []string) {
 		printTry()
 		os.Exit(2)
 	}
-	if o.port == 0 {
+	if o.CollectConfig.Port == 0 {
 		fmt.Fprintln(os.Stderr, "port must be between 1 and 65535")
 		printTry()
 		os.Exit(2)
 	}
-	if o.timeoutSec == 0 {
+	if o.CollectConfig.TimeoutSec == 0 {
 		fmt.Fprintln(os.Stderr, "timeout must be greater than 0")
 		printTry()
 		os.Exit(2)
 	}
-	if _, err := getRegexp(o.schema); err != nil {
+	if err := getRegexp(o.CollectConfig.Schema); err != nil {
 		fmt.Fprintf(os.Stderr, "bad POSIX regular expression for -c/--schema: %v\n", err)
 		printTry()
 		os.Exit(2)
 	}
-	if _, err := getRegexp(o.exclSchema); err != nil {
+	if err := getRegexp(o.CollectConfig.ExclSchema); err != nil {
 		fmt.Fprintf(os.Stderr, "bad POSIX regular expression for -C/--exclude-schema: %v\n", err)
 		printTry()
 		os.Exit(2)
 	}
-	if _, err := getRegexp(o.table); err != nil {
+	if err := getRegexp(o.CollectConfig.Table); err != nil {
 		fmt.Fprintf(os.Stderr, "bad POSIX regular expression for -a/--table: %v\n", err)
 		printTry()
 		os.Exit(2)
 	}
-	if _, err := getRegexp(o.exclTable); err != nil {
+	if err := getRegexp(o.CollectConfig.ExclTable); err != nil {
 		fmt.Fprintf(os.Stderr, "bad POSIX regular expression for -A/--exclude-table: %v\n", err)
 		printTry()
 		os.Exit(2)
 	}
-	for _, om := range o.omit {
+	for _, om := range o.CollectConfig.Omit {
 		if om != "tables" && om != "indexes" && om != "sequences" &&
 			om != "functions" && om != "extensions" && om != "triggers" &&
 			om != "statements" {
@@ -306,13 +269,6 @@ func (o *options) parse() (args []string) {
 
 	// return remaining args
 	return s.Args()
-}
-
-func getRegexp(r string) (*regexp.Regexp, error) {
-	if len(r) == 0 {
-		return nil, nil
-	}
-	return regexp.CompilePOSIX(r)
 }
 
 func writeTo(fd io.Writer, o options, result *pgmetrics.Model) {
@@ -385,7 +341,7 @@ func main() {
 		if err != nil {
 			os.Exit(1)
 		}
-		o.password = string(p)
+		o.CollectConfig.Password = string(p)
 	}
 
 	log.SetFlags(0)
@@ -405,7 +361,7 @@ func main() {
 		result = &obj
 		f.Close()
 	} else {
-		result = collect(o, args)
+		result = collector.Collect(o.CollectConfig, args)
 	}
 
 	// process it
