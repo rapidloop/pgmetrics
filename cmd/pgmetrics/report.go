@@ -890,6 +890,10 @@ Table #%d in "%s":
 				fmt.Fprintf(fd, `
     Attributes:          %s`, attrs)
 			}
+			if len(t.TablespaceName) > 0 {
+				fmt.Fprintf(fd, `
+    Tablespace:          %s`, t.TablespaceName)
+			}
 			fmt.Fprintf(fd, `
     Columns:             %d
     Manual Vacuums:      %s

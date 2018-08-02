@@ -303,6 +303,7 @@ type Table struct {
 	RelNAtts        int    `json:"relnatts"`
 	AgeRelFrozenXid int    `json:"age_relfrozenxid"`
 	RelIsPartition  bool   `json:"relispartition"`
+	TablespaceName  string `json:"tablespace_name"`
 }
 
 type Index struct {
@@ -320,8 +321,9 @@ type Index struct {
 	Size        int64  `json:"size"`
 	Bloat       int64  `json:"bloat"`
 	// rest of the fields added in schema version 1.2
-	RelNAtts int    `json:"relnatts"`
-	AMName   string `json:"amname"`
+	RelNAtts       int    `json:"relnatts"`
+	AMName         string `json:"amname"`
+	TablespaceName string `json:"tablespace_name"`
 }
 
 type Sequence struct {
