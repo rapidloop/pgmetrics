@@ -879,9 +879,19 @@ func reportTables(fd io.Writer, result *pgmetrics.Model) {
 		for i, t := range tables {
 			nTup := t.NLiveTup + t.NDeadTup
 			nTupChanged := t.NTupIns + t.NTupUpd + t.NTupDel
+			attrs := tableAttrs(t)
 			fmt.Fprintf(fd, `
 Table #%d in "%s":
-    Name:                %s.%s.%s
+    Name:                %s.%s.%s`,
+				i+1,
+				db,
+				db, t.SchemaName, t.Name)
+			if len(attrs) > 0 {
+				fmt.Fprintf(fd, `
+    Attributes:          %s`, attrs)
+			}
+			fmt.Fprintf(fd, `
+    Columns:             %d
     Manual Vacuums:      %s
     Manual Analyze:      %s
     Auto Vacuums:        %s
@@ -893,9 +903,7 @@ Table #%d in "%s":
     Seq Scans:           %d, %.1f rows/scan
     Idx Scans:           %d, %.1f rows/scan
     Cache Hits:          %.1f%% (idx=%.1f%%)`,
-				i+1,
-				db,
-				db, t.SchemaName, t.Name,
+				t.RelNAtts,
 				fmtCountAndTime(t.VacuumCount, t.LastVacuum),
 				fmtCountAndTime(t.AnalyzeCount, t.LastAnalyze),
 				fmtCountAndTime(t.AutovacuumCount, t.LastAutovacuum),
@@ -936,7 +944,7 @@ Table #%d in "%s":
 				continue
 			}
 			var tw tableWriter
-			tw.add("Index", "Size", "Bloat", "Cache Hits", "Scans", "Rows Read/Scan", "Rows Fetched/Scan")
+			tw.add("Index", "Type", "Size", "Bloat", "Cache Hits", "Scans", "Rows Read/Scan", "Rows Fetched/Scan")
 			for _, idx := range idxs {
 				var sz, bloat string
 				if idx.Size != -1 {
@@ -953,6 +961,7 @@ Table #%d in "%s":
 				}
 				tw.add(
 					idx.Name,
+					idx.AMName,
 					sz,
 					bloat,
 					fmtPct(idx.IdxBlksHit, idx.IdxBlksHit+idx.IdxBlksRead),
@@ -964,6 +973,24 @@ Table #%d in "%s":
 			tw.write(fd, "    ")
 		}
 	}
+}
+
+func tableAttrs(t *pgmetrics.Table) string {
+	var parts []string
+	if t.RelPersistence == "u" {
+		parts = append(parts, "unlogged")
+	} else if t.RelPersistence == "t" {
+		parts = append(parts, "temporary")
+	}
+	if t.RelKind == "m" {
+		parts = append(parts, "materialized view")
+	} else if t.RelKind == "p" {
+		parts = append(parts, "partition parent")
+	}
+	if t.RelIsPartition {
+		parts = append(parts, "partition")
+	}
+	return strings.Join(parts, ", ")
 }
 
 func reportSystem(fd io.Writer, result *pgmetrics.Model) {
