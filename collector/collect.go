@@ -1564,8 +1564,7 @@ func (c *collector) getSubscriptions() {
 		SELECT
 			s.oid, s.subname, subenabled, array_length(subpublications, 1) AS pubcount,
 			sc.c AS tabcount, swc.c AS workercount, ss.received_lsn, ss.latest_end_lsn,
-			COALESCE(EXTRACT(EPOCH FROM ss.last_msg_send_time)::bigint, 0),
-			COALESCE(EXTRACT(EPOCH FROM ss.last_msg_receipt_time)::bigint, 0),
+			ss.last_msg_send_time, ss.last_msg_receipt_time,
 			COALESCE(EXTRACT(EPOCH FROM ss.latest_end_time)::bigint, 0)
 		FROM
 			pg_subscription s
@@ -1582,11 +1581,15 @@ func (c *collector) getSubscriptions() {
 
 	for rows.Next() {
 		var s pgmetrics.Subscription
+		var msgSend, msgRecv time.Time
 		if err := rows.Scan(&s.OID, &s.Name, &s.Enabled, &s.PubCount,
 			&s.TableCount, &s.WorkerCount, &s.ReceivedLSN, &s.LatestEndLSN,
-			&s.LastMsgSendTime, &s.LastMsgReceiptTime, &s.LatestEndTime); err != nil {
+			&msgSend, &msgRecv, &s.LatestEndTime); err != nil {
 			log.Fatalf("pg_subscription query failed: %v", err)
 		}
+		s.LastMsgSendTime = msgSend.Unix()
+		s.LastMsgReceiptTime = msgRecv.Unix()
+		s.Latency = int64(msgRecv.Sub(msgSend)) / 1000
 		c.result.Subscriptions = append(c.result.Subscriptions, s)
 	}
 	if err := rows.Err(); err != nil {

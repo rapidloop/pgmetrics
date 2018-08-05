@@ -497,4 +497,5 @@ type Subscription struct {
 	LastMsgSendTime    int64  `json:"last_msg_send_time"`
 	LastMsgReceiptTime int64  `json:"last_msg_receipt_time"`
 	LatestEndTime      int64  `json:"latest_end_time"`
+	Latency            int64  `json:"latency_micros"`
 }

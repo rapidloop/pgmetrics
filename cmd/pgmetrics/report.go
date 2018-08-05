@@ -116,6 +116,14 @@ PostgreSQL Cluster:
 		reportReplicationSlots(fd, result, version)
 	}
 
+	if len(result.Publications) > 0 {
+		reportPublications(fd, result)
+	}
+
+	if len(result.Subscriptions) > 0 {
+		reportSubscriptions(fd, result)
+	}
+
 	reportWAL(fd, result)
 	reportBGWriter(fd, result)
 	reportBackends(fd, o.tooLongSec, result)
@@ -156,13 +164,13 @@ Incoming Replication Stats:
     Status:              %s
     Received LSN:        %s (started at %s%s)
     Timeline:            %d (was %d at start)
-    Latency:             %v
+    Latency:             %s
     Replication Slot:    %s
 `,
 		ri.Status,
 		ri.ReceivedLSN, ri.ReceiveStartLSN, recvDiff,
 		ri.ReceivedTLI, ri.ReceiveStartTLI,
-		time.Duration(ri.Latency)*time.Microsecond,
+		fmtMicros(ri.Latency),
 		ri.SlotName)
 }
 
@@ -262,6 +270,69 @@ Logical Replication Slots:
 		}
 		tw.write(fd, "    ")
 	}
+}
+
+func reportPublications(fd io.Writer, result *pgmetrics.Model) {
+	fmt.Fprintf(fd, `
+Logical Replication Publications:`)
+	for i, pub := range result.Publications {
+		fmt.Fprintf(fd, `
+    Publication #%d:
+      Name:              %s
+      All Tables?        %s
+      Propogate:         %s
+      Tables:            %d`,
+			i+1,
+			pub.Name,
+			fmtYesNo(pub.AllTables),
+			fmtWhat(pub.Insert, pub.Update, pub.Delete),
+			pub.TableCount)
+	}
+	fmt.Fprintln(fd)
+}
+
+func fmtWhat(ins, upd, del bool) string {
+	parts := make([]string, 0, 3)
+	if ins {
+		parts = append(parts, "inserts")
+	}
+	if upd {
+		parts = append(parts, "updates")
+	}
+	if del {
+		parts = append(parts, "deletes")
+	}
+	return strings.Join(parts, ", ")
+}
+
+func reportSubscriptions(fd io.Writer, result *pgmetrics.Model) {
+	fmt.Fprintf(fd, `
+Logical Replication Subscriptions:`)
+	for i, sub := range result.Subscriptions {
+		fmt.Fprintf(fd, `
+    Subscription #%d:
+      Name:              %s
+      Enabled?           %s
+      Publications:      %d
+      Tables:            %d
+      Workers:           %d
+      Received Until:    %s
+      Latency:           %s`,
+			i+1,
+			sub.Name,
+			fmtYesNo(sub.Enabled),
+			sub.PubCount,
+			sub.TableCount,
+			sub.WorkerCount,
+			sub.ReceivedLSN,
+			fmtMicros(sub.Latency))
+	}
+	fmt.Fprintln(fd)
+}
+
+func fmtMicros(v int64) string {
+	s := (time.Duration(v) * time.Microsecond).String()
+	return strings.Replace(s, "µ", "u", -1)
 }
 
 // WAL files and archiving
