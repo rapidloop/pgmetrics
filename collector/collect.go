@@ -335,6 +335,12 @@ func (c *collector) collectCluster(o CollectConfig) {
 	if c.version >= 90600 {
 		c.getNotification()
 	}
+
+	// logical replication, added schema v1.2
+	if c.version >= 100000 {
+		c.getPublications()
+		c.getSubscriptions()
+	}
 }
 
 // info and stats for the current database
@@ -1519,6 +1525,72 @@ func (c *collector) getNotification() {
 	q := `SELECT pg_notification_queue_usage()`
 	if err := c.db.QueryRowContext(ctx, q).Scan(&c.result.NotificationQueueUsage); err != nil {
 		log.Fatalf("pg_notification_queue_usage failed: %v", err)
+	}
+}
+
+func (c *collector) getPublications() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `WITH pc AS (SELECT pubname, COUNT(*) AS c FROM pg_publication_tables GROUP BY 1)
+			SELECT p.oid, p.pubname, puballtables, pubinsert, pubupdate, pubdelete, pc.c
+			FROM pg_publication p JOIN pc ON p.pubname = pc.pubname`
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		log.Fatalf("pg_publication/pg_publication_tables query failed: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var p pgmetrics.Publication
+		if err := rows.Scan(&p.OID, &p.Name, &p.AllTables, &p.Insert, &p.Update,
+			&p.Delete, &p.TableCount); err != nil {
+			log.Fatalf("pg_publication/pg_publication_tables query failed: %v", err)
+		}
+		c.result.Publications = append(c.result.Publications, p)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_publication/pg_publication_tables query failed: %v", err)
+	}
+}
+
+func (c *collector) getSubscriptions() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `WITH
+			sc AS (SELECT srsubid, COUNT(*) AS c FROM pg_subscription_rel GROUP BY 1),
+			swc AS (SELECT subid, COUNT(*) AS c FROM pg_stat_subscription GROUP BY 1)
+		SELECT
+			s.oid, s.subname, subenabled, array_length(subpublications, 1) AS pubcount,
+			sc.c AS tabcount, swc.c AS workercount, ss.received_lsn, ss.latest_end_lsn,
+			COALESCE(EXTRACT(EPOCH FROM ss.last_msg_send_time)::bigint, 0),
+			COALESCE(EXTRACT(EPOCH FROM ss.last_msg_receipt_time)::bigint, 0),
+			COALESCE(EXTRACT(EPOCH FROM ss.latest_end_time)::bigint, 0)
+		FROM
+			pg_subscription s
+			JOIN sc ON s.oid = sc.srsubid
+			JOIN pg_stat_subscription ss ON s.oid = ss.subid
+			JOIN swc ON s.oid = swc.subid
+		WHERE
+			ss.relid IS NULL`
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		log.Fatalf("pg_subscription query failed: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var s pgmetrics.Subscription
+		if err := rows.Scan(&s.OID, &s.Name, &s.Enabled, &s.PubCount,
+			&s.TableCount, &s.WorkerCount, &s.ReceivedLSN, &s.LatestEndLSN,
+			&s.LastMsgSendTime, &s.LastMsgReceiptTime, &s.LatestEndTime); err != nil {
+			log.Fatalf("pg_subscription query failed: %v", err)
+		}
+		c.result.Subscriptions = append(c.result.Subscriptions, s)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_subscription query failed: %v", err)
 	}
 }
 

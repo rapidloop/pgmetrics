@@ -97,6 +97,12 @@ type Model struct {
 
 	// settings
 	Settings map[string]Setting `json:"settings"` // all settings and their values
+
+	// rest of the fields added in schema version 1.2
+
+	// Logical replication
+	Publications  []Publication  `json:"publications,omitempty"`
+	Subscriptions []Subscription `json:"subscriptions,omitempty"`
 }
 
 // DatabaseByOID iterates over the databases in the model and returns the reference
@@ -465,4 +471,30 @@ type Statement struct {
 	TempBlksWritten   int64   `json:"temp_blks_written"`   // Total number of temp blocks written by the statement
 	BlkReadTime       float64 `json:"blk_read_time"`       // Total time the statement spent reading blocks, in milliseconds (if track_io_timing is enabled, otherwise zero)
 	BlkWriteTime      float64 `json:"blk_write_time"`      // Total time the statement spent writing blocks, in milliseconds (if track_io_timing is enabled, otherwise zero)
+}
+
+// Publication represents a single v10+ publication. Added in schema 1.2.
+type Publication struct {
+	OID        int    `json:"oid"`
+	Name       string `json:"name"`
+	AllTables  bool   `json:"alltables"`
+	Insert     bool   `json:"insert"`
+	Update     bool   `json:"update"`
+	Delete     bool   `json:"delete"`
+	TableCount int    `json:"table_count"`
+}
+
+// Subscription represents a single v10+ subscription. Added in schema 1.2.
+type Subscription struct {
+	OID                int    `json:"oid"`
+	Name               string `json:"name"`
+	Enabled            bool   `json:"enabled"`
+	PubCount           int    `json:"pub_count"`
+	TableCount         int    `json:"table_count"`
+	WorkerCount        int    `json:"worker_count"`
+	ReceivedLSN        string `json:"received_lsn"`
+	LatestEndLSN       string `json:"latest_end_lsn"`
+	LastMsgSendTime    int64  `json:"last_msg_send_time"`
+	LastMsgReceiptTime int64  `json:"last_msg_receipt_time"`
+	LatestEndTime      int64  `json:"latest_end_time"`
 }
