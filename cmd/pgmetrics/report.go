@@ -274,21 +274,18 @@ Logical Replication Slots:
 
 func reportPublications(fd io.Writer, result *pgmetrics.Model) {
 	fmt.Fprintf(fd, `
-Logical Replication Publications:`)
-	for i, pub := range result.Publications {
-		fmt.Fprintf(fd, `
-    Publication #%d:
-      Name:              %s
-      All Tables?        %s
-      Propogate:         %s
-      Tables:            %d`,
-			i+1,
+Logical Replication Publications:
+`)
+	var tw tableWriter
+	tw.add("Name", "All Tables?", "Propagate", "Tables")
+	for _, pub := range result.Publications {
+		tw.add(
 			pub.Name,
 			fmtYesNo(pub.AllTables),
 			fmtWhat(pub.Insert, pub.Update, pub.Delete),
 			pub.TableCount)
 	}
-	fmt.Fprintln(fd)
+	tw.write(fd, "    ")
 }
 
 func fmtWhat(ins, upd, del bool) string {
