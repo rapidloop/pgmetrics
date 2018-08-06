@@ -310,6 +310,8 @@ type Table struct {
 	AgeRelFrozenXid int    `json:"age_relfrozenxid"`
 	RelIsPartition  bool   `json:"relispartition"`
 	TablespaceName  string `json:"tablespace_name"`
+	ParentName      string `json:"parent_name"`
+	PartitionCV     string `json:"partition_cv"` // partition constraint value
 }
 
 type Index struct {

@@ -348,6 +348,12 @@ func (c *collector) collectDatabase(o CollectConfig) {
 	c.getCurrentDatabase()
 	if !arrayHas(o.Omit, "tables") {
 		c.getTables(!o.NoSizes)
+		// partition information, added schema v1.2
+		if c.version >= 100000 {
+			c.getPartitionInfo()
+		}
+		// parent information, added schema v1.2
+		c.getParentInfo()
 	}
 	if !arrayHas(o.Omit, "tables") && !arrayHas(o.Omit, "indexes") {
 		c.getIndexes(!o.NoSizes)
@@ -1594,6 +1600,65 @@ func (c *collector) getSubscriptions() {
 	}
 	if err := rows.Err(); err != nil {
 		log.Fatalf("pg_subscription query failed: %v", err)
+	}
+}
+
+func (c *collector) getPartitionInfo() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT c.oid, inhparent::regclass, pg_get_expr(c.relpartbound, inhrelid)
+			FROM pg_class c JOIN pg_inherits i ON c.oid = inhrelid
+			WHERE c.relispartition`
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		log.Fatalf("pg_class query failed: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var oid int
+		var parent, pcv string
+		if err := rows.Scan(&oid, &parent, &pcv); err != nil {
+			log.Fatalf("pg_class query failed: %v", err)
+		}
+		if t := c.result.TableByOID(oid); t != nil {
+			t.ParentName = parent
+			t.PartitionCV = pcv
+		}
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_class query failed: %v", err)
+	}
+}
+
+func (c *collector) getParentInfo() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT c.oid, i.inhparent::regclass
+			FROM pg_class c JOIN pg_inherits i ON c.oid=i.inhrelid`
+	if c.version >= 100000 { // exclude partition children in v10+
+		q += ` WHERE NOT c.relispartition`
+	}
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		log.Fatalf("pg_class/pg_inherits query failed: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var oid int
+		var parent string
+		if err := rows.Scan(&oid, &parent); err != nil {
+			log.Fatalf("pg_class/pg_inherits query failed: %v", err)
+		}
+		if t := c.result.TableByOID(oid); t != nil {
+			t.ParentName = parent
+		}
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_class/pg_inherits query failed: %v", err)
 	}
 }
 

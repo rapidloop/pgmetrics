@@ -961,6 +961,15 @@ Table #%d in "%s":
 				fmt.Fprintf(fd, `
     Attributes:          %s`, attrs)
 			}
+			if len(t.ParentName) > 0 {
+				if len(t.PartitionCV) > 0 {
+					fmt.Fprintf(fd, `
+    Partition of:        %s, %s`, t.ParentName, t.PartitionCV)
+				} else {
+					fmt.Fprintf(fd, `
+    Inherits from:       %s`, t.ParentName)
+				}
+			}
 			if len(t.TablespaceName) > 0 {
 				fmt.Fprintf(fd, `
     Tablespace:          %s`, t.TablespaceName)
