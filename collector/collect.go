@@ -336,11 +336,6 @@ func (c *collector) collectCluster(o CollectConfig) {
 		c.getNotification()
 	}
 
-	// logical replication, added schema v1.2
-	if c.version >= 100000 {
-		c.getPublications()
-		c.getSubscriptions()
-	}
 }
 
 // info and stats for the current database
@@ -374,6 +369,12 @@ func (c *collector) collectDatabase(o CollectConfig) {
 		c.getStatements()
 	}
 	c.getBloat()
+
+	// logical replication, added schema v1.2
+	if c.version >= 100000 {
+		c.getPublications()
+		c.getSubscriptions()
+	}
 }
 
 func arrayHas(arr []string, val string) bool {
@@ -1539,7 +1540,8 @@ func (c *collector) getPublications() {
 	defer cancel()
 
 	q := `WITH pc AS (SELECT pubname, COUNT(*) AS c FROM pg_publication_tables GROUP BY 1)
-			SELECT p.oid, p.pubname, puballtables, pubinsert, pubupdate, pubdelete, pc.c
+			SELECT p.oid, p.pubname, current_database(), puballtables, pubinsert,
+				pubupdate, pubdelete, pc.c
 			FROM pg_publication p JOIN pc ON p.pubname = pc.pubname`
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
@@ -1549,8 +1551,8 @@ func (c *collector) getPublications() {
 
 	for rows.Next() {
 		var p pgmetrics.Publication
-		if err := rows.Scan(&p.OID, &p.Name, &p.AllTables, &p.Insert, &p.Update,
-			&p.Delete, &p.TableCount); err != nil {
+		if err := rows.Scan(&p.OID, &p.Name, &p.DBName, &p.AllTables, &p.Insert,
+			&p.Update, &p.Delete, &p.TableCount); err != nil {
 			log.Fatalf("pg_publication/pg_publication_tables query failed: %v", err)
 		}
 		c.result.Publications = append(c.result.Publications, p)
@@ -1568,8 +1570,9 @@ func (c *collector) getSubscriptions() {
 			sc AS (SELECT srsubid, COUNT(*) AS c FROM pg_subscription_rel GROUP BY 1),
 			swc AS (SELECT subid, COUNT(*) AS c FROM pg_stat_subscription GROUP BY 1)
 		SELECT
-			s.oid, s.subname, subenabled, array_length(subpublications, 1) AS pubcount,
-			sc.c AS tabcount, swc.c AS workercount, ss.received_lsn, ss.latest_end_lsn,
+			s.oid, s.subname, current_database(), subenabled,
+			array_length(subpublications, 1) AS pubcount, sc.c AS tabcount,
+			swc.c AS workercount, ss.received_lsn, ss.latest_end_lsn,
 			ss.last_msg_send_time, ss.last_msg_receipt_time,
 			COALESCE(EXTRACT(EPOCH FROM ss.latest_end_time)::bigint, 0)
 		FROM
@@ -1588,7 +1591,7 @@ func (c *collector) getSubscriptions() {
 	for rows.Next() {
 		var s pgmetrics.Subscription
 		var msgSend, msgRecv time.Time
-		if err := rows.Scan(&s.OID, &s.Name, &s.Enabled, &s.PubCount,
+		if err := rows.Scan(&s.OID, &s.Name, &s.DBName, &s.Enabled, &s.PubCount,
 			&s.TableCount, &s.WorkerCount, &s.ReceivedLSN, &s.LatestEndLSN,
 			&msgSend, &msgRecv, &s.LatestEndTime); err != nil {
 			log.Fatalf("pg_subscription query failed: %v", err)

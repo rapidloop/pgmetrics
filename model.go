@@ -100,7 +100,7 @@ type Model struct {
 
 	// rest of the fields added in schema version 1.2
 
-	// Logical replication
+	// Logical replication (database-specific)
 	Publications  []Publication  `json:"publications,omitempty"`
 	Subscriptions []Subscription `json:"subscriptions,omitempty"`
 }
@@ -479,6 +479,7 @@ type Statement struct {
 type Publication struct {
 	OID        int    `json:"oid"`
 	Name       string `json:"name"`
+	DBName     string `json:"db_name"`
 	AllTables  bool   `json:"alltables"`
 	Insert     bool   `json:"insert"`
 	Update     bool   `json:"update"`
@@ -490,6 +491,7 @@ type Publication struct {
 type Subscription struct {
 	OID                int    `json:"oid"`
 	Name               string `json:"name"`
+	DBName             string `json:"db_name"`
 	Enabled            bool   `json:"enabled"`
 	PubCount           int    `json:"pub_count"`
 	TableCount         int    `json:"table_count"`
