@@ -18,9 +18,10 @@ package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
+//    1.2 - more table and index attributes
 //    1.1 - added NotificationQueueUsage and Statements
 //    1.0 - initial release
-const ModelSchemaVersion = "1.1"
+const ModelSchemaVersion = "1.2"
 
 // Model contains the entire information collected by a single run of
 // pgmetrics. It can be converted to and from json without loss of
@@ -96,6 +97,12 @@ type Model struct {
 
 	// settings
 	Settings map[string]Setting `json:"settings"` // all settings and their values
+
+	// rest of the fields added in schema version 1.2
+
+	// Logical replication (database-specific)
+	Publications  []Publication  `json:"publications,omitempty"`
+	Subscriptions []Subscription `json:"subscriptions,omitempty"`
 }
 
 // DatabaseByOID iterates over the databases in the model and returns the reference
@@ -296,6 +303,15 @@ type Table struct {
 	TidxBlksHit      int64  `json:"tidx_blks_hit"`
 	Size             int64  `json:"size"`
 	Bloat            int64  `json:"bloat"`
+	// rest of the fields added in schema version 1.2
+	RelKind         string `json:"relkind"`
+	RelPersistence  string `json:"relpersistence"`
+	RelNAtts        int    `json:"relnatts"`
+	AgeRelFrozenXid int    `json:"age_relfrozenxid"`
+	RelIsPartition  bool   `json:"relispartition"`
+	TablespaceName  string `json:"tablespace_name"`
+	ParentName      string `json:"parent_name"`
+	PartitionCV     string `json:"partition_cv"` // partition constraint value
 }
 
 type Index struct {
@@ -312,6 +328,10 @@ type Index struct {
 	IdxBlksHit  int64  `json:"idx_blks_hit"`
 	Size        int64  `json:"size"`
 	Bloat       int64  `json:"bloat"`
+	// rest of the fields added in schema version 1.2
+	RelNAtts       int    `json:"relnatts"`
+	AMName         string `json:"amname"`
+	TablespaceName string `json:"tablespace_name"`
 }
 
 type Sequence struct {
@@ -453,4 +473,33 @@ type Statement struct {
 	TempBlksWritten   int64   `json:"temp_blks_written"`   // Total number of temp blocks written by the statement
 	BlkReadTime       float64 `json:"blk_read_time"`       // Total time the statement spent reading blocks, in milliseconds (if track_io_timing is enabled, otherwise zero)
 	BlkWriteTime      float64 `json:"blk_write_time"`      // Total time the statement spent writing blocks, in milliseconds (if track_io_timing is enabled, otherwise zero)
+}
+
+// Publication represents a single v10+ publication. Added in schema 1.2.
+type Publication struct {
+	OID        int    `json:"oid"`
+	Name       string `json:"name"`
+	DBName     string `json:"db_name"`
+	AllTables  bool   `json:"alltables"`
+	Insert     bool   `json:"insert"`
+	Update     bool   `json:"update"`
+	Delete     bool   `json:"delete"`
+	TableCount int    `json:"table_count"`
+}
+
+// Subscription represents a single v10+ subscription. Added in schema 1.2.
+type Subscription struct {
+	OID                int    `json:"oid"`
+	Name               string `json:"name"`
+	DBName             string `json:"db_name"`
+	Enabled            bool   `json:"enabled"`
+	PubCount           int    `json:"pub_count"`
+	TableCount         int    `json:"table_count"`
+	WorkerCount        int    `json:"worker_count"`
+	ReceivedLSN        string `json:"received_lsn"`
+	LatestEndLSN       string `json:"latest_end_lsn"`
+	LastMsgSendTime    int64  `json:"last_msg_send_time"`
+	LastMsgReceiptTime int64  `json:"last_msg_receipt_time"`
+	LatestEndTime      int64  `json:"latest_end_time"`
+	Latency            int64  `json:"latency_micros"`
 }

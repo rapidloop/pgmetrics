@@ -335,6 +335,7 @@ func (c *collector) collectCluster(o CollectConfig) {
 	if c.version >= 90600 {
 		c.getNotification()
 	}
+
 }
 
 // info and stats for the current database
@@ -342,6 +343,12 @@ func (c *collector) collectDatabase(o CollectConfig) {
 	c.getCurrentDatabase()
 	if !arrayHas(o.Omit, "tables") {
 		c.getTables(!o.NoSizes)
+		// partition information, added schema v1.2
+		if c.version >= 100000 {
+			c.getPartitionInfo()
+		}
+		// parent information, added schema v1.2
+		c.getParentInfo()
 	}
 	if !arrayHas(o.Omit, "tables") && !arrayHas(o.Omit, "indexes") {
 		c.getIndexes(!o.NoSizes)
@@ -362,6 +369,12 @@ func (c *collector) collectDatabase(o CollectConfig) {
 		c.getStatements()
 	}
 	c.getBloat()
+
+	// logical replication, added schema v1.2
+	if c.version >= 100000 {
+		c.getPublications()
+		c.getSubscriptions()
+	}
 }
 
 func arrayHas(arr []string, val string) bool {
@@ -1088,13 +1101,20 @@ func (c *collector) getTables(fillSize bool) {
 			S.autoanalyze_count, IO.heap_blks_read, IO.heap_blks_hit,
 			COALESCE(IO.idx_blks_read, 0), COALESCE(IO.idx_blks_hit, 0),
 			COALESCE(IO.toast_blks_read, 0), COALESCE(IO.toast_blks_hit, 0),
-			COALESCE(IO.tidx_blks_read, 0), COALESCE(IO.tidx_blks_hit, 0)
+			COALESCE(IO.tidx_blks_read, 0), COALESCE(IO.tidx_blks_hit, 0),
+			C.relkind, C.relpersistence, C.relnatts, age(C.relfrozenxid),
+			C.relispartition, C.reltablespace
 		  FROM pg_stat_user_tables AS S
 			JOIN pg_statio_user_tables AS IO
 			ON S.relid = IO.relid
+			JOIN pg_class AS C
+			ON C.oid = S.relid
 		  ORDER BY S.relid ASC`
 	if c.version < 90400 { // n_mod_since_analyze only in v9.4+
 		q = strings.Replace(q, "S.n_mod_since_analyze", "0", 1)
+	}
+	if c.version < 100000 { // relispartition only in v10+
+		q = strings.Replace(q, "C.relispartition", "false", 1)
 	}
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
@@ -1105,6 +1125,7 @@ func (c *collector) getTables(fillSize bool) {
 	startIdx := len(c.result.Tables)
 	for rows.Next() {
 		var t pgmetrics.Table
+		var tblspcOID int
 		if err := rows.Scan(&t.OID, &t.SchemaName, &t.Name, &t.DBName,
 			&t.SeqScan, &t.SeqTupRead, &t.IdxScan, &t.IdxTupFetch, &t.NTupIns,
 			&t.NTupUpd, &t.NTupDel, &t.NTupHotUpd, &t.NLiveTup, &t.NDeadTup,
@@ -1112,11 +1133,21 @@ func (c *collector) getTables(fillSize bool) {
 			&t.LastAnalyze, &t.LastAutoanalyze, &t.VacuumCount,
 			&t.AutovacuumCount, &t.AnalyzeCount, &t.AutoanalyzeCount,
 			&t.HeapBlksRead, &t.HeapBlksHit, &t.IdxBlksRead, &t.IdxBlksHit,
-			&t.ToastBlksRead, &t.ToastBlksHit, &t.TidxBlksRead, &t.TidxBlksHit); err != nil {
+			&t.ToastBlksRead, &t.ToastBlksHit, &t.TidxBlksRead, &t.TidxBlksHit,
+			&t.RelKind, &t.RelPersistence, &t.RelNAtts, &t.AgeRelFrozenXid,
+			&t.RelIsPartition, &tblspcOID); err != nil {
 			log.Fatalf("pg_stat(io)_user_tables query failed: %v", err)
 		}
 		t.Size = -1  // will be filled in later if asked for
 		t.Bloat = -1 // will be filled in later
+		if tblspcOID != 0 {
+			for _, ts := range c.result.Tablespaces {
+				if ts.OID == tblspcOID {
+					t.TablespaceName = ts.Name
+					break
+				}
+			}
+		}
 		if c.tableOK(t.SchemaName, t.Name) {
 			c.result.Tables = append(c.result.Tables, t)
 		}
@@ -1140,9 +1171,14 @@ func (c *collector) getIndexes(fillSize bool) {
 	q := `SELECT S.relid, S.indexrelid, S.schemaname, S.relname, S.indexrelname,
 			current_database(), S.idx_scan, S.idx_tup_read, S.idx_tup_fetch,
 			pg_stat_get_blocks_fetched(S.indexrelid) - pg_stat_get_blocks_hit(S.indexrelid) AS idx_blks_read,
-			pg_stat_get_blocks_hit(S.indexrelid) AS idx_blks_hit
-		  FROM pg_stat_user_indexes AS S
-		  ORDER BY s.relid ASC`
+			pg_stat_get_blocks_hit(S.indexrelid) AS idx_blks_hit,
+			C.relnatts, AM.amname, C.reltablespace
+		FROM pg_stat_user_indexes AS S
+			JOIN pg_class AS C
+			ON S.indexrelid = C.oid
+			JOIN pg_am AS AM
+			ON C.relam = AM.oid
+		ORDER BY S.relid ASC`
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
 		log.Fatalf("pg_stat_user_indexes query failed: %v", err)
@@ -1152,14 +1188,23 @@ func (c *collector) getIndexes(fillSize bool) {
 	startIdx := len(c.result.Indexes)
 	for rows.Next() {
 		var idx pgmetrics.Index
+		var tblspcOID int
 		if err := rows.Scan(&idx.TableOID, &idx.OID, &idx.SchemaName,
 			&idx.TableName, &idx.Name, &idx.DBName, &idx.IdxScan,
 			&idx.IdxTupRead, &idx.IdxTupFetch, &idx.IdxBlksRead,
-			&idx.IdxBlksHit); err != nil {
+			&idx.IdxBlksHit, &idx.RelNAtts, &idx.AMName, &tblspcOID); err != nil {
 			log.Fatalf("pg_stat_user_indexes query failed: %v", err)
 		}
 		idx.Size = -1  // will be filled in later if asked for
 		idx.Bloat = -1 // will be filled in later
+		if tblspcOID != 0 {
+			for _, ts := range c.result.Tablespaces {
+				if ts.OID == tblspcOID {
+					idx.TablespaceName = ts.Name
+					break
+				}
+			}
+		}
 		if c.tableOK(idx.SchemaName, idx.TableName) {
 			c.result.Indexes = append(c.result.Indexes, idx)
 		}
@@ -1487,6 +1532,136 @@ func (c *collector) getNotification() {
 	q := `SELECT pg_notification_queue_usage()`
 	if err := c.db.QueryRowContext(ctx, q).Scan(&c.result.NotificationQueueUsage); err != nil {
 		log.Fatalf("pg_notification_queue_usage failed: %v", err)
+	}
+}
+
+func (c *collector) getPublications() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `WITH pc AS (SELECT pubname, COUNT(*) AS c FROM pg_publication_tables GROUP BY 1)
+			SELECT p.oid, p.pubname, current_database(), puballtables, pubinsert,
+				pubupdate, pubdelete, pc.c
+			FROM pg_publication p JOIN pc ON p.pubname = pc.pubname`
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		log.Fatalf("pg_publication/pg_publication_tables query failed: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var p pgmetrics.Publication
+		if err := rows.Scan(&p.OID, &p.Name, &p.DBName, &p.AllTables, &p.Insert,
+			&p.Update, &p.Delete, &p.TableCount); err != nil {
+			log.Fatalf("pg_publication/pg_publication_tables query failed: %v", err)
+		}
+		c.result.Publications = append(c.result.Publications, p)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_publication/pg_publication_tables query failed: %v", err)
+	}
+}
+
+func (c *collector) getSubscriptions() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `WITH
+			sc AS (SELECT srsubid, COUNT(*) AS c FROM pg_subscription_rel GROUP BY 1),
+			swc AS (SELECT subid, COUNT(*) AS c FROM pg_stat_subscription GROUP BY 1)
+		SELECT
+			s.oid, s.subname, current_database(), subenabled,
+			array_length(subpublications, 1) AS pubcount, sc.c AS tabcount,
+			swc.c AS workercount, ss.received_lsn, ss.latest_end_lsn,
+			ss.last_msg_send_time, ss.last_msg_receipt_time,
+			COALESCE(EXTRACT(EPOCH FROM ss.latest_end_time)::bigint, 0)
+		FROM
+			pg_subscription s
+			JOIN sc ON s.oid = sc.srsubid
+			JOIN pg_stat_subscription ss ON s.oid = ss.subid
+			JOIN swc ON s.oid = swc.subid
+		WHERE
+			ss.relid IS NULL`
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		log.Fatalf("pg_subscription query failed: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var s pgmetrics.Subscription
+		var msgSend, msgRecv time.Time
+		if err := rows.Scan(&s.OID, &s.Name, &s.DBName, &s.Enabled, &s.PubCount,
+			&s.TableCount, &s.WorkerCount, &s.ReceivedLSN, &s.LatestEndLSN,
+			&msgSend, &msgRecv, &s.LatestEndTime); err != nil {
+			log.Fatalf("pg_subscription query failed: %v", err)
+		}
+		s.LastMsgSendTime = msgSend.Unix()
+		s.LastMsgReceiptTime = msgRecv.Unix()
+		s.Latency = int64(msgRecv.Sub(msgSend)) / 1000
+		c.result.Subscriptions = append(c.result.Subscriptions, s)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_subscription query failed: %v", err)
+	}
+}
+
+func (c *collector) getPartitionInfo() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT c.oid, inhparent::regclass, pg_get_expr(c.relpartbound, inhrelid)
+			FROM pg_class c JOIN pg_inherits i ON c.oid = inhrelid
+			WHERE c.relispartition`
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		log.Fatalf("pg_class query failed: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var oid int
+		var parent, pcv string
+		if err := rows.Scan(&oid, &parent, &pcv); err != nil {
+			log.Fatalf("pg_class query failed: %v", err)
+		}
+		if t := c.result.TableByOID(oid); t != nil {
+			t.ParentName = parent
+			t.PartitionCV = pcv
+		}
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_class query failed: %v", err)
+	}
+}
+
+func (c *collector) getParentInfo() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT c.oid, i.inhparent::regclass
+			FROM pg_class c JOIN pg_inherits i ON c.oid=i.inhrelid`
+	if c.version >= 100000 { // exclude partition children in v10+
+		q += ` WHERE NOT c.relispartition`
+	}
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		log.Fatalf("pg_class/pg_inherits query failed: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var oid int
+		var parent string
+		if err := rows.Scan(&oid, &parent); err != nil {
+			log.Fatalf("pg_class/pg_inherits query failed: %v", err)
+		}
+		if t := c.result.TableByOID(oid); t != nil {
+			t.ParentName = parent
+		}
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_class/pg_inherits query failed: %v", err)
 	}
 }
 

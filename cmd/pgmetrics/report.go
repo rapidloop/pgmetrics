@@ -156,13 +156,13 @@ Incoming Replication Stats:
     Status:              %s
     Received LSN:        %s (started at %s%s)
     Timeline:            %d (was %d at start)
-    Latency:             %v
+    Latency:             %s
     Replication Slot:    %s
 `,
 		ri.Status,
 		ri.ReceivedLSN, ri.ReceiveStartLSN, recvDiff,
 		ri.ReceivedTLI, ri.ReceiveStartTLI,
-		time.Duration(ri.Latency)*time.Microsecond,
+		fmtMicros(ri.Latency),
 		ri.SlotName)
 }
 
@@ -762,6 +762,56 @@ Database #%d:
 				)
 			}
 			tw.write(fd, "      ")
+			gap = true
+		}
+
+		if pp := filterPublicationsByDB(result, d.Name); len(pp) > 0 {
+			if gap {
+				fmt.Fprintln(fd)
+			}
+			fmt.Fprintf(fd, `    Logical Replication Publications:
+`)
+			var tw tableWriter
+			tw.add("Name", "All Tables?", "Propagate", "Tables")
+			for _, p := range pp {
+				tw.add(
+					p.Name,
+					fmtYesNo(p.AllTables),
+					fmtPropagate(p.Insert, p.Update, p.Delete),
+					p.TableCount,
+				)
+			}
+			tw.write(fd, "      ")
+			gap = true
+		}
+
+		if ss := filterSubscriptionsByDB(result, d.Name); len(ss) > 0 {
+			if gap {
+				fmt.Fprintln(fd)
+			}
+			fmt.Fprintf(fd, `    Logical Replication Subscriptions:
+`)
+			for i, s := range ss {
+				fmt.Fprintf(fd, `      Subscription #%d:
+        Name:              %s
+        Enabled?           %s
+        Publications:      %d
+        Tables:            %d
+        Workers:           %d
+        Received Until:    %s
+        Latency:           %s
+`,
+					i+1,
+					s.Name,
+					fmtYesNo(s.Enabled),
+					s.PubCount,
+					s.TableCount,
+					s.WorkerCount,
+					s.ReceivedLSN,
+					fmtMicros(s.Latency),
+				)
+			}
+			gap = true
 		}
 	}
 }
@@ -788,8 +838,7 @@ func prepmsec(ms float64) string {
 
 func filterSequencesByDB(result *pgmetrics.Model, db string) (out []*pgmetrics.Sequence) {
 	for i := range result.Sequences {
-		s := &result.Sequences[i]
-		if s.DBName == db {
+		if s := &result.Sequences[i]; s.DBName == db {
 			out = append(out, s)
 		}
 	}
@@ -798,8 +847,7 @@ func filterSequencesByDB(result *pgmetrics.Model, db string) (out []*pgmetrics.S
 
 func filterUserFuncsByDB(result *pgmetrics.Model, db string) (out []*pgmetrics.UserFunction) {
 	for i := range result.UserFunctions {
-		uf := &result.UserFunctions[i]
-		if uf.DBName == db {
+		if uf := &result.UserFunctions[i]; uf.DBName == db {
 			out = append(out, uf)
 		}
 	}
@@ -808,8 +856,7 @@ func filterUserFuncsByDB(result *pgmetrics.Model, db string) (out []*pgmetrics.U
 
 func filterExtensionsByDB(result *pgmetrics.Model, db string) (out []*pgmetrics.Extension) {
 	for i := range result.Extensions {
-		e := &result.Extensions[i]
-		if e.DBName == db {
+		if e := &result.Extensions[i]; e.DBName == db {
 			out = append(out, e)
 		}
 	}
@@ -818,8 +865,7 @@ func filterExtensionsByDB(result *pgmetrics.Model, db string) (out []*pgmetrics.
 
 func filterTriggersByDB(result *pgmetrics.Model, db string) (out []*pgmetrics.Trigger) {
 	for i := range result.DisabledTriggers {
-		t := &result.DisabledTriggers[i]
-		if t.DBName == db {
+		if t := &result.DisabledTriggers[i]; t.DBName == db {
 			out = append(out, t)
 		}
 	}
@@ -828,8 +874,7 @@ func filterTriggersByDB(result *pgmetrics.Model, db string) (out []*pgmetrics.Tr
 
 func filterStatementsByDB(result *pgmetrics.Model, db string) (out []*pgmetrics.Statement) {
 	for i := range result.Statements {
-		s := &result.Statements[i]
-		if s.DBName == db {
+		if s := &result.Statements[i]; s.DBName == db {
 			out = append(out, s)
 		}
 	}
@@ -838,13 +883,32 @@ func filterStatementsByDB(result *pgmetrics.Model, db string) (out []*pgmetrics.
 
 func filterTablesByDB(result *pgmetrics.Model, db string) (out []*pgmetrics.Table) {
 	for i := range result.Tables {
-		t := &result.Tables[i]
-		if t.DBName == db {
+		if t := &result.Tables[i]; t.DBName == db {
 			out = append(out, t)
 		}
 	}
 	return
 }
+
+func filterPublicationsByDB(result *pgmetrics.Model, db string) (out []*pgmetrics.Publication) {
+	for i := range result.Publications {
+		if p := &result.Publications[i]; p.DBName == db {
+			out = append(out, p)
+		}
+	}
+	return
+}
+
+func filterSubscriptionsByDB(result *pgmetrics.Model, db string) (out []*pgmetrics.Subscription) {
+	for i := range result.Subscriptions {
+		if s := &result.Subscriptions[i]; s.DBName == db {
+			out = append(out, s)
+		}
+	}
+	return
+}
+
+// Duh. Did anyone say generics?
 
 func fmtPct(a, b int64) string {
 	if b == 0 {
@@ -879,9 +943,32 @@ func reportTables(fd io.Writer, result *pgmetrics.Model) {
 		for i, t := range tables {
 			nTup := t.NLiveTup + t.NDeadTup
 			nTupChanged := t.NTupIns + t.NTupUpd + t.NTupDel
+			attrs := tableAttrs(t)
 			fmt.Fprintf(fd, `
 Table #%d in "%s":
-    Name:                %s.%s.%s
+    Name:                %s.%s.%s`,
+				i+1,
+				db,
+				db, t.SchemaName, t.Name)
+			if len(attrs) > 0 {
+				fmt.Fprintf(fd, `
+    Attributes:          %s`, attrs)
+			}
+			if len(t.ParentName) > 0 {
+				if len(t.PartitionCV) > 0 {
+					fmt.Fprintf(fd, `
+    Partition of:        %s, %s`, t.ParentName, t.PartitionCV)
+				} else {
+					fmt.Fprintf(fd, `
+    Inherits from:       %s`, t.ParentName)
+				}
+			}
+			if len(t.TablespaceName) > 0 {
+				fmt.Fprintf(fd, `
+    Tablespace:          %s`, t.TablespaceName)
+			}
+			fmt.Fprintf(fd, `
+    Columns:             %d
     Manual Vacuums:      %s
     Manual Analyze:      %s
     Auto Vacuums:        %s
@@ -893,9 +980,7 @@ Table #%d in "%s":
     Seq Scans:           %d, %.1f rows/scan
     Idx Scans:           %d, %.1f rows/scan
     Cache Hits:          %.1f%% (idx=%.1f%%)`,
-				i+1,
-				db,
-				db, t.SchemaName, t.Name,
+				t.RelNAtts,
 				fmtCountAndTime(t.VacuumCount, t.LastVacuum),
 				fmtCountAndTime(t.AnalyzeCount, t.LastAnalyze),
 				fmtCountAndTime(t.AutovacuumCount, t.LastAutovacuum),
@@ -936,7 +1021,7 @@ Table #%d in "%s":
 				continue
 			}
 			var tw tableWriter
-			tw.add("Index", "Size", "Bloat", "Cache Hits", "Scans", "Rows Read/Scan", "Rows Fetched/Scan")
+			tw.add("Index", "Type", "Size", "Bloat", "Cache Hits", "Scans", "Rows Read/Scan", "Rows Fetched/Scan")
 			for _, idx := range idxs {
 				var sz, bloat string
 				if idx.Size != -1 {
@@ -953,6 +1038,7 @@ Table #%d in "%s":
 				}
 				tw.add(
 					idx.Name,
+					idx.AMName,
 					sz,
 					bloat,
 					fmtPct(idx.IdxBlksHit, idx.IdxBlksHit+idx.IdxBlksRead),
@@ -964,6 +1050,24 @@ Table #%d in "%s":
 			tw.write(fd, "    ")
 		}
 	}
+}
+
+func tableAttrs(t *pgmetrics.Table) string {
+	var parts []string
+	if t.RelPersistence == "u" {
+		parts = append(parts, "unlogged")
+	} else if t.RelPersistence == "t" {
+		parts = append(parts, "temporary")
+	}
+	if t.RelKind == "m" {
+		parts = append(parts, "materialized view")
+	} else if t.RelKind == "p" {
+		parts = append(parts, "partition parent")
+	}
+	if t.RelIsPartition {
+		parts = append(parts, "partition")
+	}
+	return strings.Join(parts, ", ")
 }
 
 func reportSystem(fd io.Writer, result *pgmetrics.Model) {
@@ -1092,6 +1196,25 @@ func fmtIntZero(i int) string {
 		return ""
 	}
 	return strconv.Itoa(i)
+}
+
+func fmtPropagate(ins, upd, del bool) string {
+	parts := make([]string, 0, 3)
+	if ins {
+		parts = append(parts, "inserts")
+	}
+	if upd {
+		parts = append(parts, "updates")
+	}
+	if del {
+		parts = append(parts, "deletes")
+	}
+	return strings.Join(parts, ", ")
+}
+
+func fmtMicros(v int64) string {
+	s := (time.Duration(v) * time.Microsecond).String()
+	return strings.Replace(s, "µ", "u", -1)
 }
 
 func getSetting(result *pgmetrics.Model, key string) string {
