@@ -1283,9 +1283,10 @@ func (c *collector) getVacuumProgress() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	q := `SELECT datname, relid, phase, heap_blks_total, heap_blks_scanned,
-			heap_blks_vacuumed, index_vacuum_count, max_dead_tuples,
-			num_dead_tuples
+	q := `SELECT datname, COALESCE(relid, 0), COALESCE(phase, ''),
+			COALESCE(heap_blks_total, 0), COALESCE(heap_blks_scanned, 0),
+			COALESCE(heap_blks_vacuumed, 0), COALESCE(index_vacuum_count, 0),
+			COALESCE(max_dead_tuples, 0), COALESCE(num_dead_tuples, 0)
 		  FROM pg_stat_progress_vacuum
 		  ORDER BY pid ASC`
 	rows, err := c.db.QueryContext(ctx, q)
