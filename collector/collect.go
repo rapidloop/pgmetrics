@@ -1546,7 +1546,7 @@ func (c *collector) getPublications() {
 			FROM pg_publication p JOIN pc ON p.pubname = pc.pubname`
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
-		log.Fatalf("pg_publication/pg_publication_tables query failed: %v", err)
+		return // don't fail on errors
 	}
 	defer rows.Close()
 
@@ -1585,7 +1585,7 @@ func (c *collector) getSubscriptions() {
 			ss.relid IS NULL`
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
-		log.Fatalf("pg_subscription query failed: %v", err)
+		return // don't fail on errors
 	}
 	defer rows.Close()
 
