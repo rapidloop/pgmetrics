@@ -35,7 +35,7 @@
 
 [[constraint]]
   branch = "master"
-  name = "github.com/lib/pq"
+  name = "github.com/rapidloop/pq"
 
 [[constraint]]
   branch = "master"

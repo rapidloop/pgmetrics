@@ -30,7 +30,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lib/pq"
+	"github.com/rapidloop/pq"
 	"github.com/rapidloop/pgmetrics"
 )
 
