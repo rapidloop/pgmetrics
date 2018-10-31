@@ -73,7 +73,7 @@ Connection options:
                                    (default: "%s")
   -p, --port=PORT              database server port (default: %d)
   -U, --username=USERNAME      database user name (default: "%s")
-      --no-password            never prompt for password
+  -w, --no-password            never prompt for password
 
 For more information, visit <https://pgmetrics.io>.
 `
@@ -198,7 +198,7 @@ func (o *options) parse() (args []string) {
 	s.StringVarLong(&o.CollectConfig.Host, "host", 'h', "")
 	s.Uint16VarLong(&o.CollectConfig.Port, "port", 'p', "")
 	s.StringVarLong(&o.CollectConfig.User, "username", 'U', "")
-	s.BoolVarLong(&o.passNone, "no-password", 0, "")
+	s.BoolVarLong(&o.passNone, "no-password", 'w', "")
 
 	// parse
 	s.Parse(os.Args)
