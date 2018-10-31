@@ -30,8 +30,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rapidloop/pq"
 	"github.com/rapidloop/pgmetrics"
+	"github.com/rapidloop/pq"
 )
 
 // See https://www.postgresql.org/docs/current/static/libpq-connect.html#LIBPQ-CONNSTRING
@@ -57,13 +57,14 @@ type CollectConfig struct {
 	NoSizes    bool
 
 	// collection
-	Schema     string
-	ExclSchema string
-	Table      string
-	ExclTable  string
-	SQLLength  uint
-	StmtsLimit uint
-	Omit       []string
+	Schema        string
+	ExclSchema    string
+	Table         string
+	ExclTable     string
+	SQLLength     uint
+	StmtsLimit    uint
+	Omit          []string
+	OnlyListedDBs bool
 
 	// connection
 	Host     string
@@ -86,6 +87,7 @@ func DefaultCollectConfig() CollectConfig {
 		//Table: "",
 		//ExclTable: "",
 		//Omit: nil,
+		//OnlyListedDBs: false,
 		SQLLength:  500,
 		StmtsLimit: 100,
 
@@ -160,7 +162,9 @@ func Collect(o CollectConfig, dbnames []string) *pgmetrics.Model {
 	connstr += makeKV("statement_timeout", strconv.Itoa(int(o.TimeoutSec)*1000))
 
 	// collect from 1 or more DBs
-	c := &collector{}
+	c := &collector{
+		dbnames: dbnames,
+	}
 	if len(dbnames) == 0 {
 		collectFromDB(connstr, c, o)
 	} else {
@@ -208,6 +212,7 @@ type collector struct {
 	rxExclTable  *regexp.Regexp
 	sqlLength    uint
 	stmtsLimit   uint
+	dbnames      []string
 }
 
 func (c *collector) collect(db *sql.DB, o CollectConfig) {
@@ -322,7 +327,7 @@ func (c *collector) collectCluster(o CollectConfig) {
 		c.getVacuumProgress()
 	}
 
-	c.getDatabases(!o.NoSizes)
+	c.getDatabases(!o.NoSizes, o.OnlyListedDBs, c.dbnames)
 	c.getTablespaces(!o.NoSizes)
 
 	if c.version >= 90400 {
@@ -989,10 +994,16 @@ func (c *collector) getActivityv93() {
 	}
 }
 
-func (c *collector) getDatabases(fillSize bool) {
+// fillSize - get and fill in the database size also
+// onlyListed - only collect for the databases listed in 'dbList'
+// dbList - list of database names for onlyListed
+// also: if onlyListed is true but dbList is empty, assume dbList contains
+//	the name of the currently connected database
+func (c *collector) getDatabases(fillSize, onlyListed bool, dbList []string) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
+	// query template
 	q := `SELECT D.oid, D.datname, D.datdba, D.dattablespace, D.datconnlimit,
 			age(D.datfrozenxid), S.numbackends, S.xact_commit, S.xact_rollback,
 			S.blks_read, S.blks_hit, S.tup_returned, S.tup_fetched,
@@ -1002,14 +1013,30 @@ func (c *collector) getDatabases(fillSize bool) {
 			COALESCE(EXTRACT(EPOCH FROM S.stats_reset)::bigint, 0)
 		  FROM pg_database AS D JOIN pg_stat_database AS S
 			ON D.oid = S.datid
-		  WHERE NOT D.datistemplate
+		  WHERE (NOT D.datistemplate) @only@
 		  ORDER BY D.oid ASC`
-	rows, err := c.db.QueryContext(ctx, q)
+
+	// fill the only clause and arguments
+	onlyClause := ""
+	var args []interface{}
+	if onlyListed {
+		if len(dbList) > 0 {
+			onlyClause = "AND (D.datname = any($1))"
+			args = append(args, pq.Array(dbList))
+		} else {
+			onlyClause = "AND (D.datname = current_database())"
+		}
+	}
+	q = strings.Replace(q, "@only@", onlyClause, 1)
+
+	// do the query
+	rows, err := c.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		log.Fatalf("pg_stat_database query failed: %v", err)
 	}
 	defer rows.Close()
 
+	// collect the result
 	for rows.Next() {
 		var d pgmetrics.Database
 		if err := rows.Scan(&d.OID, &d.Name, &d.DatDBA, &d.DatTablespace,
@@ -1027,6 +1054,7 @@ func (c *collector) getDatabases(fillSize bool) {
 		log.Fatalf("pg_stat_database query failed: %v", err)
 	}
 
+	// fill in the size if asked for
 	if !fillSize {
 		return
 	}

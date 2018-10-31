@@ -58,6 +58,8 @@ Collection options:
                                    queries (default: 500)
       --statements-limit=LIMIT collect only utmost LIMIT number of row from
                                    pg_stat_statements (default: 100)
+      --only-listed            collect info only about the databases listed as
+                                   command-line args (use with Heroku)
 
 Output options:
   -f, --format=FORMAT          output format; "human", or "json" (default: "human")
@@ -186,6 +188,7 @@ func (o *options) parse() (args []string) {
 	s.ListVarLong(&o.CollectConfig.Omit, "omit", 0, "")
 	s.UintVarLong(&o.CollectConfig.SQLLength, "sql-length", 0, "")
 	s.UintVarLong(&o.CollectConfig.StmtsLimit, "statements-limit", 0, "")
+	s.BoolVarLong(&o.CollectConfig.OnlyListedDBs, "only-listed", 0, "").SetFlag()
 	// output
 	s.StringVarLong(&o.format, "format", 'f', "")
 	s.StringVarLong(&o.output, "output", 'o', "")
