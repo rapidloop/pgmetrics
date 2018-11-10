@@ -18,10 +18,11 @@ package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
+//    1.3 - locks information
 //    1.2 - more table and index attributes
 //    1.1 - added NotificationQueueUsage and Statements
 //    1.0 - initial release
-const ModelSchemaVersion = "1.2"
+const ModelSchemaVersion = "1.3"
 
 // Model contains the entire information collected by a single run of
 // pgmetrics. It can be converted to and from json without loss of
@@ -98,11 +99,17 @@ type Model struct {
 	// settings
 	Settings map[string]Setting `json:"settings"` // all settings and their values
 
-	// rest of the fields added in schema version 1.2
+	// following fields present only in schema 1.2 and later
 
 	// Logical replication (database-specific)
 	Publications  []Publication  `json:"publications,omitempty"`
 	Subscriptions []Subscription `json:"subscriptions,omitempty"`
+
+	// following fields present only in schema 1.3 and later
+
+	// Lock information
+	Locks        []Lock        `json:"locks,omitempty"`
+	BlockingPIDs map[int][]int `json:"blocking_pids,omitempty"`
 }
 
 // DatabaseByOID iterates over the databases in the model and returns the reference
@@ -303,7 +310,7 @@ type Table struct {
 	TidxBlksHit      int64  `json:"tidx_blks_hit"`
 	Size             int64  `json:"size"`
 	Bloat            int64  `json:"bloat"`
-	// rest of the fields added in schema version 1.2
+	// following fields present only in schema 1.2 and later
 	RelKind         string `json:"relkind"`
 	RelPersistence  string `json:"relpersistence"`
 	RelNAtts        int    `json:"relnatts"`
@@ -328,7 +335,7 @@ type Index struct {
 	IdxBlksHit  int64  `json:"idx_blks_hit"`
 	Size        int64  `json:"size"`
 	Bloat       int64  `json:"bloat"`
-	// rest of the fields added in schema version 1.2
+	// following fields present only in schema 1.2 and later
 	RelNAtts       int    `json:"relnatts"`
 	AMName         string `json:"amname"`
 	TablespaceName string `json:"tablespace_name"`
@@ -502,4 +509,14 @@ type Subscription struct {
 	LastMsgReceiptTime int64  `json:"last_msg_receipt_time"`
 	LatestEndTime      int64  `json:"latest_end_time"`
 	Latency            int64  `json:"latency_micros"`
+}
+
+// Lock represents a single row from pg_locks. Added in schema 1.3.
+type Lock struct {
+	LockType    string `json:"locktype"`
+	DBName      string `json:"db_name,omitempty"`
+	PID         int    `json:"pid"`
+	Mode        string `json:"mode"`
+	Granted     bool   `json:"granted"`
+	RelationOID int    `json:"relation_oid,omitempty"`
 }

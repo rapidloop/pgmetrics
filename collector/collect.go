@@ -341,6 +341,7 @@ func (c *collector) collectCluster(o CollectConfig) {
 		c.getNotification()
 	}
 
+	c.getLocks()
 }
 
 // info and stats for the current database
@@ -1561,6 +1562,117 @@ func (c *collector) getNotification() {
 	q := `SELECT pg_notification_queue_usage()`
 	if err := c.db.QueryRowContext(ctx, q).Scan(&c.result.NotificationQueueUsage); err != nil {
 		log.Fatalf("pg_notification_queue_usage failed: %v", err)
+	}
+}
+
+func (c *collector) getLocks() {
+	c.getLockRows()
+	if c.version >= 90600 {
+		c.getBlockers96()
+	} else {
+		c.getBlockers()
+	}
+}
+
+func (c *collector) getLockRows() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `
+SELECT COALESCE(D.datname, ''), L.locktype, L.mode, L.granted, L.pid,
+	   COALESCE(L.relation, 0)
+  FROM pg_locks L LEFT OUTER JOIN pg_database D ON L.database = D.oid`
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		log.Fatalf("pg_locks query failed: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var l pgmetrics.Lock
+		if err := rows.Scan(&l.DBName, &l.LockType, &l.Mode, &l.Granted,
+			&l.PID, &l.RelationOID); err != nil {
+			log.Fatalf("pg_locks query failed: %v", err)
+		}
+		c.result.Locks = append(c.result.Locks, l)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_locks query failed: %v", err)
+	}
+}
+
+func (c *collector) getBlockers96() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `
+WITH P AS (SELECT DISTINCT pid FROM pg_locks WHERE NOT granted)
+SELECT pid, pg_blocking_pids(pid) FROM P`
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		log.Fatalf("pg_locks query failed: %v", err)
+	}
+	defer rows.Close()
+
+	c.result.BlockingPIDs = make(map[int][]int)
+	for rows.Next() {
+		var pid int
+		var blockers []int64 // lib/pq doesn't support []int :-(
+		if err := rows.Scan(&pid, pq.Array(&blockers)); err != nil {
+			log.Fatalf("pg_locks query failed: %v", err)
+		}
+		blockersInt := make([]int, len(blockers))
+		for i := range blockers {
+			blockersInt[i] = int(blockers[i])
+		}
+		c.result.BlockingPIDs[pid] = blockersInt
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_locks query failed: %v", err)
+	}
+}
+
+func (c *collector) getBlockers() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	// Based on a query from https://wiki.postgresql.org/wiki/Lock_Monitoring
+	q := `
+SELECT DISTINCT blocked_locks.pid AS blocked_pid, blocking_locks.pid AS blocking_pid
+ FROM  pg_catalog.pg_locks blocked_locks
+  JOIN pg_catalog.pg_locks blocking_locks 
+        ON blocking_locks.locktype = blocked_locks.locktype
+        AND blocking_locks.database IS NOT DISTINCT FROM blocked_locks.database
+        AND blocking_locks.relation IS NOT DISTINCT FROM blocked_locks.relation
+        AND blocking_locks.page IS NOT DISTINCT FROM blocked_locks.page
+        AND blocking_locks.tuple IS NOT DISTINCT FROM blocked_locks.tuple
+        AND blocking_locks.virtualxid IS NOT DISTINCT FROM blocked_locks.virtualxid
+        AND blocking_locks.transactionid IS NOT DISTINCT FROM blocked_locks.transactionid
+        AND blocking_locks.classid IS NOT DISTINCT FROM blocked_locks.classid
+        AND blocking_locks.objid IS NOT DISTINCT FROM blocked_locks.objid
+        AND blocking_locks.objsubid IS NOT DISTINCT FROM blocked_locks.objsubid
+        AND blocking_locks.pid != blocked_locks.pid
+ WHERE NOT blocked_locks.GRANTED`
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		log.Fatalf("pg_locks query failed: %v", err)
+	}
+	defer rows.Close()
+
+	c.result.BlockingPIDs = make(map[int][]int)
+	for rows.Next() {
+		var pid, blocker int
+		if err := rows.Scan(&pid, &blocker); err != nil {
+			log.Fatalf("pg_locks query failed: %v", err)
+		}
+		if _, ok := c.result.BlockingPIDs[pid]; ok {
+			c.result.BlockingPIDs[pid] = append(c.result.BlockingPIDs[pid], blocker)
+		} else {
+			c.result.BlockingPIDs[pid] = []int{blocker}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_locks query failed: %v", err)
 	}
 }
 
