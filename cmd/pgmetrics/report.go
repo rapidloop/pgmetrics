@@ -19,6 +19,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -119,6 +120,7 @@ PostgreSQL Cluster:
 	reportWAL(fd, result)
 	reportBGWriter(fd, result)
 	reportBackends(fd, o.tooLongSec, result)
+	reportLocks(fd, result)
 	if version >= 90600 {
 		reportVacuumProgress(fd, result)
 	}
@@ -498,6 +500,54 @@ Backends:
 	}
 }
 
+type lockCount struct {
+	notGranted int
+	total      int
+}
+
+func reportLocks(fd io.Writer, result *pgmetrics.Model) {
+	if len(result.Locks) == 0 {
+		return
+	}
+
+	c := make(map[string]*lockCount)
+	for _, l := range result.Locks {
+		lc, ok := c[l.LockType]
+		if !ok {
+			lc = &lockCount{}
+			c[l.LockType] = lc
+		}
+		if !l.Granted {
+			lc.notGranted++
+		}
+		lc.total++
+	}
+	lt := make([]string, 0, len(c))
+	for k := range c {
+		lt = append(lt, k)
+	}
+	sort.Strings(lt)
+
+	fmt.Fprint(fd, `
+Locks:
+`)
+	var tw tableWriter
+	tw.add("Lock Type", "Not Granted", "Total")
+	var tot1, tot2 int
+	for _, t := range lt {
+		lc, ok := c[t]
+		if !ok || lc == nil {
+			continue
+		}
+		tw.add(t, lc.notGranted, lc.total)
+		tot1 += lc.notGranted
+		tot2 += lc.total
+	}
+	tw.add("", tot1, tot2)
+	tw.hasFooter = true
+	tw.write(fd, "    ")
+}
+
 func reportVacuumProgress(fd io.Writer, result *pgmetrics.Model) {
 	fmt.Fprint(fd, `
 Vacuum Progress:`)
@@ -813,7 +863,103 @@ Database #%d:
 			}
 			gap = true
 		}
+
+		if ls := filterLocksByDB(result, d.Name); len(ls) > 0 {
+			if gap {
+				fmt.Fprintln(fd)
+			}
+			fmt.Fprintf(fd, `    Blocked Queries:
+`)
+			count := 0
+			for _, l := range ls {
+				if l.Granted {
+					continue
+				}
+				be := getBE(result, l.PID)
+				if be == nil {
+					continue
+				}
+				count++
+				fmt.Fprintf(fd, `      Blocked Query #%d:
+        Query:             %s
+        Started By:        %s
+        Waiting Since:     %s
+`,
+					count,
+					prepQ(be.Query),
+					getBEClient(be),
+					fmtTimeAndSince(be.StateChange))
+				if result.BlockingPIDs == nil {
+					continue
+				}
+				pids, ok := result.BlockingPIDs[l.PID]
+				if !ok || len(pids) == 0 {
+					continue
+				}
+				for _, b := range pids {
+					bbe := getBE(result, b)
+					if bbe == nil {
+						continue
+					}
+					fmt.Fprintf(fd, `        Waiting For:
+          Query:             %s
+          Lock:              %s
+          Started By:        %s
+`,
+						prepQ(bbe.Query),
+						getLockDesc(l, result),
+						getBEClient(bbe),
+					)
+				}
+			}
+			gap = true
+		}
 	}
+}
+
+func getBE(result *pgmetrics.Model, pid int) *pgmetrics.Backend {
+	for i, be := range result.Backends {
+		if be.PID == pid {
+			return &result.Backends[i]
+		}
+	}
+	return nil
+}
+
+func getBEClient(be *pgmetrics.Backend) string {
+	// role@client:db (PID pid)
+	// appname role@client:db (PID pid)
+	var out string
+	if len(be.ApplicationName) > 0 {
+		out = be.ApplicationName + " "
+	}
+	out += be.RoleName
+	if len(be.ClientAddr) > 0 {
+		c := strings.TrimSuffix(be.ClientAddr, "/128")
+		c = strings.TrimSuffix(c, "/32")
+		out += "@" + c
+	}
+	out += fmt.Sprintf("/%s (PID %d)", be.DBName, be.PID)
+	return out
+}
+
+func getLockDesc(l *pgmetrics.Lock, result *pgmetrics.Model) (out string) {
+	out = l.LockType + ", " + l.Mode
+	if l.LockType == "relation" {
+		// search tables
+		if t := result.TableByOID(l.RelationOID); t != nil {
+			out += ", table " + t.SchemaName + "." + t.Name
+		} else {
+			// else search indexes
+			for _, idx := range result.Indexes {
+				if idx.OID == l.RelationOID {
+					out += ", index " + idx.SchemaName + "." + idx.Name
+					break
+				}
+			}
+		}
+	}
+	return
 }
 
 const stmtSQLDisplayLength = 50
@@ -903,6 +1049,15 @@ func filterSubscriptionsByDB(result *pgmetrics.Model, db string) (out []*pgmetri
 	for i := range result.Subscriptions {
 		if s := &result.Subscriptions[i]; s.DBName == db {
 			out = append(out, s)
+		}
+	}
+	return
+}
+
+func filterLocksByDB(result *pgmetrics.Model, db string) (out []*pgmetrics.Lock) {
+	for i := range result.Locks {
+		if l := &result.Locks[i]; l.DBName == db {
+			out = append(out, l)
 		}
 	}
 	return
@@ -1313,7 +1468,8 @@ func getMaxWalSize(result *pgmetrics.Model) (string, string) {
 //------------------------------------------------------------------------------
 
 type tableWriter struct {
-	data [][]string
+	data      [][]string
+	hasFooter bool
 }
 
 func (t *tableWriter) add(cols ...interface{}) {
@@ -1367,7 +1523,7 @@ func (t *tableWriter) write(fd io.Writer, pfx string) {
 	}
 	line()
 	for i, row := range t.data {
-		if i == 1 {
+		if i == 1 || (t.hasFooter && i == len(t.data)-1) {
 			line()
 		}
 		fmt.Fprintf(fd, "%s|", pfx)
