@@ -1751,7 +1751,7 @@ func (c *collector) getPartitionInfo() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	q := `SELECT c.oid, inhparent::regclass, pg_get_expr(c.relpartbound, inhrelid)
+	q := `SELECT c.oid, inhparent::regclass, COALESCE(pg_get_expr(c.relpartbound, inhrelid), '')
 			FROM pg_class c JOIN pg_inherits i ON c.oid = inhrelid
 			WHERE c.relispartition`
 	rows, err := c.db.QueryContext(ctx, q)
