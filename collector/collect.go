@@ -1346,7 +1346,7 @@ func (c *collector) getExtensions() {
 	defer cancel()
 
 	q := `SELECT name, current_database(), COALESCE(default_version, ''),
-			COALESCE(installed_version, ''), comment
+			COALESCE(installed_version, ''), COALESCE(comment, '')
 		  FROM pg_available_extensions
 		  WHERE installed_version IS NOT NULL
 		  ORDER BY name ASC`
