@@ -17,6 +17,7 @@
 package main
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -62,7 +63,7 @@ Collection options:
                                    command-line args (use with Heroku)
 
 Output options:
-  -f, --format=FORMAT          output format; "human", or "json" (default: "human")
+  -f, --format=FORMAT          output format; "human", "json" or "csv" (default: "human")
   -l, --toolong=SECS           for human output, transactions running longer than
                                    this are considered too long (default: 60)
   -o, --output=FILE            write output to the specified file
@@ -211,8 +212,8 @@ func (o *options) parse() (args []string) {
 		printTry()
 		os.Exit(2)
 	}
-	if o.format != "human" && o.format != "json" {
-		fmt.Fprintln(os.Stderr, `option -f/--format must be "human" or "json"`)
+	if o.format != "human" && o.format != "json" && o.format != "csv" {
+		fmt.Fprintln(os.Stderr, `option -f/--format must be "human", "json" or "csv"`)
 		printTry()
 		os.Exit(2)
 	}
@@ -275,9 +276,12 @@ func (o *options) parse() (args []string) {
 }
 
 func writeTo(fd io.Writer, o options, result *pgmetrics.Model) {
-	if o.format == "json" {
+	switch o.format {
+	case "json":
 		writeJSONTo(fd, result)
-	} else {
+	case "csv":
+		writeCSVTo(fd, result)
+	default:
 		writeHumanTo(fd, o, result)
 	}
 }
@@ -288,6 +292,14 @@ func writeJSONTo(fd io.Writer, result *pgmetrics.Model) {
 	if err := enc.Encode(result); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func writeCSVTo(fd io.Writer, result *pgmetrics.Model) {
+	w := csv.NewWriter(fd)
+	if err := model2csv(result, w); err != nil {
+		log.Fatal(err)
+	}
+	w.Flush()
 }
 
 func process(result *pgmetrics.Model, o options, args []string) {
