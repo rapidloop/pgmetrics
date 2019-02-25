@@ -18,11 +18,12 @@ package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
+//    1.4 - pgbouncer information
 //    1.3 - locks information
 //    1.2 - more table and index attributes
 //    1.1 - added NotificationQueueUsage and Statements
 //    1.0 - initial release
-const ModelSchemaVersion = "1.3"
+const ModelSchemaVersion = "1.4"
 
 // Model contains the entire information collected by a single run of
 // pgmetrics. It can be converted to and from json without loss of
@@ -110,6 +111,10 @@ type Model struct {
 	// Lock information
 	Locks        []Lock        `json:"locks,omitempty"`
 	BlockingPIDs map[int][]int `json:"blocking_pids,omitempty"`
+
+	// following fields present only in schema 1.4 and later
+
+	PgBouncer *PgBouncer `json:"pgbouncer,omitempty"`
 }
 
 // DatabaseByOID iterates over the databases in the model and returns the reference
@@ -519,4 +524,74 @@ type Lock struct {
 	Mode        string `json:"mode"`
 	Granted     bool   `json:"granted"`
 	RelationOID int    `json:"relation_oid,omitempty"`
+}
+
+// PgBouncer contains information collected from the virtual "pgbouncer"
+// database. Added in schema 1.4.
+type PgBouncer struct {
+	Pools     []PgBouncerPool     `json:"pools,omitempty"`
+	Stats     []PgBouncerStat     `json:"stats,omitempty"`
+	Databases []PgBouncerDatabase `json:"dbs,omitempty"`
+
+	SCActive  int     `json:"sc_active"`  // no. of active server conns
+	SCIdle    int     `json:"sc_idle"`    // no. of idle server conns
+	SCUsed    int     `json:"sc_used"`    // no. of used server conns
+	SCMaxWait float64 `json:"sc_maxwait"` // max wait time for server conns
+
+	CCActive  int     `json:"cc_active"`  // no. of active client conns
+	CCWaiting int     `json:"cc_waiting"` // no. of waiting client conns
+	CCIdle    int     `json:"cc_idle"`    // no. of idle client conns
+	CCUsed    int     `json:"cc_used"`    // no. of used client conns
+	CCMaxWait float64 `json:"cc_maxwait"` // max wait time for *waiting* client conns
+	CCAvgWait float64 `json:"cc_avgwait"` // avg wait time for *waiting* client conns
+}
+
+// PgBouncerPool contains information about one pool of PgBouncer (one row
+// from SHOW POOLS).
+type PgBouncerPool struct {
+	Database  string  `json:"db_name"`
+	UserName  string  `json:"user"`
+	ClActive  int     `json:"cl_active"`
+	ClWaiting int     `json:"cl_waiting"`
+	SvActive  int     `json:"sv_active"`
+	SvIdle    int     `json:"sv_idle"`
+	SvUsed    int     `json:"sv_used"`
+	SvTested  int     `json:"sv_tested"`
+	SvLogin   int     `json:"sv_login"`
+	MaxWait   float64 `json:"maxwait"` // seconds
+	Mode      string  `json:"pool_mode"`
+}
+
+// PgBouncerDatabase contains information about one database of PgBouncer
+// (one row from SHOW DATABASES).
+type PgBouncerDatabase struct {
+	Database       string `json:"db_name"`
+	Host           string `json:"host"`
+	Port           int    `json:"port"`
+	SourceDatabase string `json:"srcdb_name"`
+	User           string `json:"force_user"`
+	MaxConn        int    `json:"max_connections"`
+	CurrConn       int    `json:"current_connections"`
+	Paused         bool   `json:"paused"`
+	Disabled       bool   `json:"disabled"`
+}
+
+// PgBouncerStat contains one row from SHOW STATS. Times are in seconds,
+// averages are for the last second (as per PgBouncer docs).
+type PgBouncerStat struct {
+	Database        string  `json:"db_name"`
+	TotalXactCount  int64   `json:"total_xact_count"`
+	TotalQueryCount int64   `json:"total_query_count"`
+	TotalReceived   int64   `json:"total_received"`   // bytes
+	TotalSent       int64   `json:"total_sent"`       // bytes
+	TotalXactTime   float64 `json:"total_xact_time"`  // seconds
+	TotalQueryTime  float64 `json:"total_query_time"` // seconds
+	TotalWaitTime   float64 `json:"total_wait_time"`  // seconds
+	AvgXactCount    int64   `json:"avg_xact_count"`
+	AvgQueryCount   int64   `json:"avg_query_count"`
+	AvgReceived     int64   `json:"avg_received"`   // bytes
+	AvgSent         int64   `json:"avg_sent"`       // bytes
+	AvgXactTime     float64 `json:"avg_xact_time"`  // seconds
+	AvgQueryTime    float64 `json:"avg_query_time"` // seconds
+	AvgWaitTime     float64 `json:"avg_wait_time"`  // seconds
 }

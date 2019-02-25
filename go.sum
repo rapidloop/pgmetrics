@@ -4,8 +4,8 @@ github.com/howeyc/gopass v0.0.0-20170109162249-bf9dde6d0d2c h1:kQWxfPIHVLbgLzphq
 github.com/howeyc/gopass v0.0.0-20170109162249-bf9dde6d0d2c/go.mod h1:lADxMC39cJJqL93Duh1xhAs4I2Zs8mKS89XWXFGp9cs=
 github.com/pborman/getopt v0.0.0-20170112200414-7148bc3a4c30 h1:BHT1/DKsYDGkUgQ2jmMaozVcdk+sVfz0+1ZJq4zkWgw=
 github.com/pborman/getopt v0.0.0-20170112200414-7148bc3a4c30/go.mod h1:85jBQOZwpVEaDAr341tbn15RS4fCAsIst0qp7i8ex1o=
-github.com/rapidloop/pq v1.0.1-0.20190213071352-40e32c54310a h1:50NE0D8503baGHtVutzmqKvaEg+P6vXhE1vm4mp3wE4=
-github.com/rapidloop/pq v1.0.1-0.20190213071352-40e32c54310a/go.mod h1:KCIg3rAcDl7ELp5s30z4lIp1xaOujoaMXnlYKhHECFo=
+github.com/rapidloop/pq v1.0.1-0.20190218105255-66681b501d6d h1:EWq3ibHQWraca0IXLiB3/uTnYPPC2nGC2tsIvnLVjNo=
+github.com/rapidloop/pq v1.0.1-0.20190218105255-66681b501d6d/go.mod h1:KCIg3rAcDl7ELp5s30z4lIp1xaOujoaMXnlYKhHECFo=
 github.com/xdg-go/stringprep v1.0.0 h1:W/PJi55zhi8ClBDgGZK2sdhe6QxuHS6YiVwrGEOYjdE=
 github.com/xdg-go/stringprep v1.0.0/go.mod h1:1lAKNhwXFE4//YT4gqVxkhclqvPTWe2Kyd6L59AbR8w=
 github.com/xdg/stringprep v1.0.0 h1:d9X0esnoa3dFsV0FG35rAT0RIhYFlPq7MiP+DW89La0=

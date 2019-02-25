@@ -24,11 +24,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dustin/go-humanize"
+	humanize "github.com/dustin/go-humanize"
 	"github.com/rapidloop/pgmetrics"
 )
 
 func writeHumanTo(fd io.Writer, o options, result *pgmetrics.Model) {
+	if result.PgBouncer != nil {
+		pgbouncerWriteHumanTo(fd, o, result)
+	} else {
+		postgresWriteHumanTo(fd, o, result)
+	}
+}
+
+func postgresWriteHumanTo(fd io.Writer, o options, result *pgmetrics.Model) {
 	version := getVersion(result)
 	sincePrior, _ := lsnDiff(result.RedoLSN, result.PriorLSN)
 	sinceRedo, _ := lsnDiff(result.CheckpointLSN, result.RedoLSN)
@@ -1271,6 +1279,108 @@ System Information:
 }
 
 //------------------------------------------------------------------------------
+// pgbouncer
+
+func pgbouncerWriteHumanTo(fd io.Writer, o options, result *pgmetrics.Model) {
+	var tw tableWriter
+	fmt.Fprintf(fd, `
+pgmetrics run at: %s
+`,
+		fmtTimeAndSince(result.Metadata.At),
+	)
+
+	// databases
+	fmt.Fprintf(fd, `
+PgBouncer Databases:
+`)
+	tw.clear()
+	tw.add("Database", "Maps To", "Paused?", "Disabled?", "Clients", "Xacts*", "Queries*", "Client Wait*")
+	var dbs []string
+	for _, db := range result.PgBouncer.Databases {
+		dbs = append(dbs, db.Database)
+	}
+	sort.Strings(dbs)
+	for _, name := range dbs {
+		cols := []interface{}{name}
+		for _, db := range result.PgBouncer.Databases {
+			if db.Database == name {
+				if name == "pgbouncer" {
+					cols = append(cols, "(internal)")
+				} else {
+					host := db.Host
+					if strings.Index(host, ":") >= 0 {
+						host = "[" + host + "]"
+					}
+					user := db.User
+					if len(user) > 0 {
+						user += "@"
+					}
+					cols = append(cols, fmt.Sprintf("%s%s:%d/%s", user, host, db.Port, db.SourceDatabase))
+				}
+				cols = append(cols, fmtYesNo(db.Paused), fmtYesNo(db.Disabled))
+				if db.MaxConn != 0 {
+					cols = append(cols, fmt.Sprintf("%d of %d", db.CurrConn, db.MaxConn))
+				} else {
+					cols = append(cols, db.CurrConn)
+				}
+				break
+			}
+		}
+		found := false
+		for _, s := range result.PgBouncer.Stats {
+			if s.Database == name {
+				cols = append(cols,
+					s.TotalXactCount,
+					s.TotalQueryCount,
+					time.Duration(s.TotalWaitTime*1e9).Truncate(time.Millisecond))
+				found = true
+				break
+			}
+		}
+		if !found {
+			cols = append(cols, "0", "0", "0s")
+		}
+		tw.add(cols...)
+	}
+	w := tw.write(fd, "    ")
+	msg := "* = cumulative values since start of PgBouncer"
+	fmt.Fprintf(fd, `%*s
+`,
+		w, msg)
+
+	// pools
+	fmt.Fprintf(fd, `
+PgBouncer Pools:
+`)
+	tw.clear()
+	tw.add("User", "Database", "Mode", "Client Conns", "Server Conns", "Max Wait")
+	for _, p := range result.PgBouncer.Pools {
+		tw.add(
+			p.UserName,
+			p.Database,
+			p.Mode,
+			fmt.Sprintf("%d actv, %d wtng", p.ClActive, p.ClWaiting),
+			fmt.Sprintf("%d actv, %d idle, %d othr", p.SvActive, p.SvIdle, p.SvUsed+p.SvTested),
+			time.Duration(p.MaxWait*1e9).Truncate(time.Millisecond))
+	}
+	tw.write(fd, "    ")
+
+	// client connections
+	r := result.PgBouncer
+	fmt.Fprintf(fd, `
+Current Connections:
+    Clients: %d active, %d waiting, %d idle, %d used
+    Servers: %d active, %d idle, %d used
+    Client Wait Times: max %v, avg %v
+
+`,
+		r.CCActive, r.CCWaiting, r.CCIdle, r.CCUsed,
+		r.SCActive, r.SCIdle, r.SCUsed,
+		time.Duration(r.CCMaxWait*1e9).Truncate(time.Millisecond),
+		time.Duration(r.CCAvgWait*1e9).Truncate(time.Millisecond))
+}
+
+//------------------------------------------------------------------------------
 
 func fmtTime(at int64) string {
 	if at == 0 {
@@ -1494,7 +1604,7 @@ func (t *tableWriter) cols() int {
 	return n
 }
 
-func (t *tableWriter) write(fd io.Writer, pfx string) {
+func (t *tableWriter) write(fd io.Writer, pfx string) (tw int) {
 	if len(t.data) == 0 {
 		return
 	}
@@ -1511,6 +1621,11 @@ func (t *tableWriter) write(fd io.Writer, pfx string) {
 				widths[c] = w
 			}
 		}
+	}
+	// calculate total width
+	tw = len(pfx) + 1 // "prefix", "|"
+	for _, w := range widths {
+		tw += 1 + w + 1 + 1 // blank, "value", blank, "|"
 	}
 	// print line
 	line := func() {
@@ -1533,4 +1648,5 @@ func (t *tableWriter) write(fd io.Writer, pfx string) {
 		fmt.Fprintln(fd)
 	}
 	line()
+	return
 }

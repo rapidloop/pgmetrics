@@ -158,8 +158,12 @@ func Collect(o CollectConfig, dbnames []string) *pgmetrics.Model {
 		connstr += makeKV("sslmode", "disable")
 	}
 	connstr += makeKV("application_name", "pgmetrics")
-	connstr += makeKV("lock_timeout", "50") // 50 msec. Just fail fast on locks.
-	connstr += makeKV("statement_timeout", strconv.Itoa(int(o.TimeoutSec)*1000))
+
+	// set timeouts (but not for pgbouncer, it does not like them)
+	if !(len(dbnames) == 1 && dbnames[0] == "pgbouncer") {
+		connstr += makeKV("lock_timeout", "50") // 50 msec. Just fail fast on locks.
+		connstr += makeKV("statement_timeout", strconv.Itoa(int(o.TimeoutSec)*1000))
+	}
 
 	// collect from 1 or more DBs
 	c := &collector{
@@ -243,29 +247,35 @@ func (c *collector) collectFirst(db *sql.DB, o CollectConfig) {
 	c.result.Metadata.At = time.Now().Unix()
 	c.result.Metadata.Version = pgmetrics.ModelSchemaVersion
 
-	// get settings and other configuration
-	c.getSettings()
-	if v, err := strconv.Atoi(c.setting("server_version_num")); err != nil {
-		log.Fatalf("bad server_version_num: %v", err)
+	if len(c.dbnames) == 1 && c.dbnames[0] == "pgbouncer" {
+		// pgbouncer mode:
+		c.collectPgBouncer()
 	} else {
-		c.version = v
-	}
-	c.getLocal()
-	if c.local {
-		c.dataDir = c.setting("data_directory")
-		if len(c.dataDir) == 0 {
-			c.dataDir = os.Getenv("PGDATA")
+		// postgres mode:
+		// get settings and other configuration
+		c.getSettings()
+		if v, err := strconv.Atoi(c.setting("server_version_num")); err != nil {
+			log.Fatalf("bad server_version_num: %v", err)
+		} else {
+			c.version = v
 		}
-	}
+		c.getLocal()
+		if c.local {
+			c.dataDir = c.setting("data_directory")
+			if len(c.dataDir) == 0 {
+				c.dataDir = os.Getenv("PGDATA")
+			}
+		}
 
-	c.collectCluster(o)
-	if c.local {
-		// Only implemented for Linux for now.
-		if runtime.GOOS == "linux" {
-			c.collectSystem(o)
+		c.collectCluster(o)
+		if c.local {
+			// Only implemented for Linux for now.
+			if runtime.GOOS == "linux" {
+				c.collectSystem(o)
+			}
 		}
+		c.collectDatabase(o)
 	}
-	c.collectDatabase(o)
 }
 
 func (c *collector) collectNext(db *sql.DB, o CollectConfig) {
@@ -1837,6 +1847,275 @@ func (c *collector) getBloat() {
 	}
 	if err := rows.Err(); err != nil {
 		log.Fatalf("bloat query failed: %v", err)
+	}
+}
+
+//------------------------------------------------------------------------------
+// PgBouncer
+
+func (c *collector) collectPgBouncer() {
+	c.result.PgBouncer = &pgmetrics.PgBouncer{}
+	c.getPBPools()
+	c.getPBServers()
+	c.getPBClients()
+	c.getPBStats()
+	c.getPBDatabases()
+}
+
+/*
+-[ RECORD 1 ]---------
+database   | pgbouncer
+user       | pgbouncer
+cl_active  | 1
+cl_waiting | 0
+sv_active  | 0
+sv_idle    | 0
+sv_used    | 0
+sv_tested  | 0
+sv_login   | 0
+maxwait    | 0
+maxwait_us | 0
+pool_mode  | statement
+*/
+func (c *collector) getPBPools() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	rows, err := c.db.QueryContext(ctx, "SHOW POOLS")
+	if err != nil {
+		log.Fatalf("show pools query failed: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var pool pgmetrics.PgBouncerPool
+		var maxWaitUs float64
+		if err := rows.Scan(&pool.Database, &pool.UserName, &pool.ClActive,
+			&pool.ClWaiting, &pool.SvActive, &pool.SvIdle, &pool.SvUsed,
+			&pool.SvTested, &pool.SvLogin, &pool.MaxWait, &maxWaitUs, &pool.Mode); err != nil {
+			log.Fatalf("show pools query failed: %v", err)
+		}
+		pool.MaxWait += maxWaitUs / 1e6
+		c.result.PgBouncer.Pools = append(c.result.PgBouncer.Pools, pool)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("show pools query failed: %v", err)
+	}
+}
+
+/*
+-[ RECORD 1 ]+--------------------
+type         | S
+user         | user1
+database     | db1
+state        | active
+addr         | 127.0.0.1
+port         | 5432
+local_addr   | 127.0.0.1
+local_port   | 52664
+connect_time | 2019-02-19 09:24:42
+request_time | 2019-02-19 09:25:02
+wait         | 0
+wait_us      | 0
+close_needed | 0
+ptr          | 0x55cec2a87f40
+link         | 0x55cec2a82f70
+remote_pid   | 5017
+tls          |
+*/
+func (c *collector) getPBServers() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	rows, err := c.db.QueryContext(ctx, "SHOW SERVERS")
+	if err != nil {
+		log.Fatalf("show servers query failed: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var s [14]sql.NullString
+		var state string
+		var wait, waitUs float64
+		if err := rows.Scan(&s[0], &s[1], &s[2], &state, &s[3], &s[4], &s[5],
+			&s[6], &s[7], &s[8], &wait, &waitUs, &s[9], &s[10], &s[11],
+			&s[12], &s[13]); err != nil {
+			log.Fatalf("show servers query failed: %v", err)
+		}
+		wait += waitUs / 1e6 // convert usec -> sec
+		if wait > c.result.PgBouncer.SCMaxWait {
+			c.result.PgBouncer.SCMaxWait = wait
+		}
+		switch state {
+		case "active":
+			c.result.PgBouncer.SCActive++
+		case "idle":
+			c.result.PgBouncer.SCIdle++
+		case "used":
+			c.result.PgBouncer.SCUsed++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("show servers query failed: %v", err)
+	}
+}
+
+/*
+-[ RECORD 1 ]+--------------------
+type         | C
+user         | user1
+database     | db1
+state        | active
+addr         | 127.0.0.1
+port         | 33374
+local_addr   | 127.0.0.1
+local_port   | 16432
+connect_time | 2019-02-19 09:24:42
+request_time | 2019-02-19 09:38:05
+wait         | 0
+wait_us      | 0
+close_needed | 0
+ptr          | 0x55cec2a82f70
+link         | 0x55cec2a87f40
+remote_pid   | 0
+tls          |
+*/
+func (c *collector) getPBClients() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	rows, err := c.db.QueryContext(ctx, "SHOW CLIENTS")
+	if err != nil {
+		log.Fatalf("show clients query failed: %v", err)
+	}
+	defer rows.Close()
+
+	var totalWait float64
+	for rows.Next() {
+		var s [14]sql.NullString
+		var state string
+		var wait, waitUs float64
+		if err := rows.Scan(&s[0], &s[1], &s[2], &state, &s[3], &s[4], &s[5],
+			&s[6], &s[7], &s[8], &wait, &waitUs, &s[9], &s[10], &s[11],
+			&s[12], &s[13]); err != nil {
+			log.Fatalf("show clients query failed: %v", err)
+		}
+		wait += waitUs / 1e6 // convert usec -> sec
+		switch state {
+		case "active":
+			c.result.PgBouncer.CCActive++
+		case "waiting":
+			c.result.PgBouncer.CCWaiting++
+			if wait > c.result.PgBouncer.CCMaxWait {
+				c.result.PgBouncer.CCMaxWait = wait
+			}
+			totalWait += wait
+		case "idle":
+			c.result.PgBouncer.CCIdle++
+		case "used":
+			c.result.PgBouncer.CCUsed++
+		}
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("show clients query failed: %v", err)
+	}
+	if c.result.PgBouncer.CCWaiting > 0 {
+		c.result.PgBouncer.CCAvgWait = totalWait / float64(c.result.PgBouncer.CCWaiting)
+	}
+}
+
+/*
+-[ RECORD 1 ]-----+----------
+database          | db1
+total_xact_count  | 2
+total_query_count | 5
+total_received    | 724
+total_sent        | 458
+total_xact_time   | 782187281
+total_query_time  | 183481
+total_wait_time   | 95445
+avg_xact_count    | 0
+avg_query_count   | 0
+avg_recv          | 6
+avg_sent          | 3
+avg_xact_time     | 782187281
+avg_query_time    | 45718
+avg_wait_time     | 0
+*/
+func (c *collector) getPBStats() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	rows, err := c.db.QueryContext(ctx, "SHOW STATS")
+	if err != nil {
+		log.Fatalf("show stats query failed: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var stat pgmetrics.PgBouncerStat
+		if err := rows.Scan(&stat.Database, &stat.TotalXactCount, &stat.TotalQueryCount,
+			&stat.TotalReceived, &stat.TotalSent, &stat.TotalXactTime,
+			&stat.TotalQueryTime, &stat.TotalWaitTime, &stat.AvgXactCount,
+			&stat.AvgQueryCount, &stat.AvgReceived, &stat.AvgSent, &stat.AvgXactTime,
+			&stat.AvgQueryTime, &stat.AvgWaitTime); err != nil {
+			log.Fatalf("show stats query failed: %v", err)
+		}
+		// convert usec -> sec
+		stat.TotalXactTime /= 1e6
+		stat.TotalQueryTime /= 1e6
+		stat.TotalWaitTime /= 1e6
+		stat.AvgXactTime /= 1e6
+		stat.AvgQueryTime /= 1e6
+		stat.AvgWaitTime /= 1e6
+		c.result.PgBouncer.Stats = append(c.result.PgBouncer.Stats, stat)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("show stats query failed: %v", err)
+	}
+}
+
+/*
+-[ RECORD 1 ]-------+----------
+name                | db1
+host                | localhost
+port                | 5432
+database            | db1
+force_user          |
+pool_size           | 5
+reserve_pool        | 0
+pool_mode           |
+max_connections     | 0
+current_connections | 0
+paused              | 0
+disabled            | 0
+*/
+func (c *collector) getPBDatabases() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	rows, err := c.db.QueryContext(ctx, "SHOW DATABASES")
+	if err != nil {
+		log.Fatalf("show databases query failed: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var db pgmetrics.PgBouncerDatabase
+		var host, user, s1, s2, s3 sql.NullString
+		var paused, disabled int
+		if err := rows.Scan(&db.Database, &host, &db.Port, &db.SourceDatabase,
+			&user, &s1, &s2, &s3, &db.MaxConn, &db.CurrConn, &paused, &disabled); err != nil {
+			log.Fatalf("show databases query failed: %v", err)
+		}
+		db.Host = host.String
+		db.Paused = paused == 1
+		db.Disabled = disabled == 1
+		db.User = user.String
+		c.result.PgBouncer.Databases = append(c.result.PgBouncer.Databases, db)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("show databases query failed: %v", err)
 	}
 }
 
