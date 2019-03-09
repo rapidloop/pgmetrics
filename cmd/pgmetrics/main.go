@@ -350,7 +350,7 @@ func main() {
 	var o options
 	o.defaults()
 	args := o.parse()
-	if !o.passNone && len(o.input) == 0 {
+	if !o.passNone && len(o.input) == 0 && os.Getenv("PGPASSWORD") == "" {
 		fmt.Print("Password: ")
 		p, err := gopass.GetPasswd()
 		if err != nil {
