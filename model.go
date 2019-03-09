@@ -18,12 +18,13 @@ package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
+//    1.5 - add PID to replication_outgoing entries
 //    1.4 - pgbouncer information
 //    1.3 - locks information
 //    1.2 - more table and index attributes
 //    1.1 - added NotificationQueueUsage and Statements
 //    1.0 - initial release
-const ModelSchemaVersion = "1.4"
+const ModelSchemaVersion = "1.5"
 
 // Model contains the entire information collected by a single run of
 // pgmetrics. It can be converted to and from json without loss of
@@ -432,6 +433,8 @@ type ReplicationOut struct {
 	ReplayLag       int    `json:"replay_lag"` // only in 10.x
 	SyncPriority    int    `json:"sync_priority"`
 	SyncState       string `json:"sync_state"`
+	// following fields present only in schema 1.5 and later
+	PID int `json:"pid,omitempty"`
 }
 
 type ReplicationIn struct {
