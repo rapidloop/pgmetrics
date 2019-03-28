@@ -1512,9 +1512,23 @@ func (c *collector) getStatements() {
 		  LIMIT $2`
 	rows, err := c.db.QueryContext(ctx, q, c.sqlLength, c.stmtsLimit)
 	if err != nil {
-		// ignore any errors, pg_stat_statements extension may not be
-		// available
-		return
+		// If we get an error about "min_time" we probably have an old (v1.2)
+		// version of pg_stat_statements which does not have min_time, max_time
+		// and stddev_time. Even older versions (1.1 and below) do not have
+		// queryid, but we don't support that (postgres v9.3 and below).
+		// We can't check the extension version upfront since it might not have
+		// been collected (--omit=extensions).
+		if strings.Index(err.Error(), "min_time") >= 0 {
+			q = strings.Replace(q, "min_time", "0", 1)
+			q = strings.Replace(q, "max_time", "0", 1)
+			q = strings.Replace(q, "stddev_time", "0", 1)
+			rows, err = c.db.QueryContext(ctx, q, c.sqlLength, c.stmtsLimit)
+		}
+		// If we still have errors, silently give up on querying
+		// pg_stat_statements.
+		if err != nil {
+			return
+		}
 	}
 	defer rows.Close()
 
