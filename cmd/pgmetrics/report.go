@@ -872,7 +872,7 @@ Database #%d:
 			gap = true
 		}
 
-		if ls := filterLocksByDB(result, d.Name); len(ls) > 0 {
+		if ls := filterLocksByDB(result, d.Name); hasBlockedQueries(ls) {
 			if gap {
 				fmt.Fprintln(fd)
 			}
@@ -923,6 +923,15 @@ Database #%d:
 			gap = true
 		}
 	}
+}
+
+func hasBlockedQueries(locks []*pgmetrics.Lock) bool {
+	for _, l := range locks {
+		if l != nil && !l.Granted {
+			return true
+		}
+	}
+	return false
 }
 
 func getBE(result *pgmetrics.Model, pid int) *pgmetrics.Backend {
