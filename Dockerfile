@@ -1,4 +1,4 @@
-FROM golang:1.11
+FROM golang:1.12
 RUN GO111MODULES=on CGO_ENABLED=0 GOOS=linux go get -a -installsuffix cgo github.com/rapidloop/pgmetrics/cmd/pgmetrics
 
 FROM alpine:latest  
