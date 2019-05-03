@@ -1846,20 +1846,20 @@ func (c *collector) getBloat() {
 
 	for rows.Next() {
 		var dbname, schemaname, tablename, indexname string
-		var dummy [14]string // we don't want to edit sqlBloat!
-		var wasted int64
+		var dummy [13]string // we don't want to edit sqlBloat!
+		var wastedbytes, wastedibytes int64
 		if err := rows.Scan(&dbname, &schemaname, &tablename, &dummy[0],
-			&dummy[1], &dummy[2], &dummy[3], &dummy[4], &dummy[5], &dummy[6],
-			&indexname, &dummy[7], &dummy[8], &dummy[9], &dummy[10], &dummy[11],
-			&dummy[12], &dummy[13], &wasted); err != nil {
+			&dummy[1], &dummy[2], &dummy[3], &dummy[4], &wastedbytes, &dummy[5],
+			&indexname, &dummy[6], &dummy[7], &dummy[8], &dummy[9], &dummy[10],
+			&wastedibytes, &dummy[11], &dummy[12]); err != nil {
 			log.Fatalf("bloat query failed: %v", err)
 		}
 		if t := c.result.TableByName(dbname, schemaname, tablename); t != nil && t.Bloat == -1 {
-			t.Bloat = wasted
+			t.Bloat = wastedbytes
 		}
 		if indexname != "?" {
 			if i := c.result.IndexByName(dbname, schemaname, indexname); i != nil && i.Bloat == -1 {
-				i.Bloat = wasted
+				i.Bloat = wastedibytes
 			}
 		}
 	}
@@ -2154,7 +2154,7 @@ SELECT
   iname, ituples::bigint AS itups, ipages::bigint AS ipages, iotta,
   ROUND(CASE WHEN iotta=0 OR ipages=0 OR ipages=iotta THEN 0.0 ELSE ipages/iotta::numeric END,1) AS ibloat,
   CASE WHEN ipages < iotta THEN 0 ELSE ipages::bigint - iotta END AS wastedipages,
-  CASE WHEN ipages < iotta THEN 0 ELSE bs*(ipages-iotta) END AS wastedibytes,
+  CASE WHEN ipages < iotta THEN 0 ELSE (bs*(ipages-iotta))::bigint END AS wastedibytes,
   CASE WHEN ipages < iotta THEN '0 bytes' ELSE (bs*(ipages-iotta))::bigint::text || ' bytes' END AS wastedisize,
   CASE WHEN relpages < otta THEN
     CASE WHEN ipages < iotta THEN 0 ELSE bs*(ipages-iotta::bigint) END
