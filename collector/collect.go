@@ -352,6 +352,10 @@ func (c *collector) collectCluster(o CollectConfig) {
 	}
 
 	c.getLocks()
+
+	if !arrayHas(o.Omit, "statements") {
+		c.getStatements()
+	}
 }
 
 // info and stats for the current database
@@ -380,9 +384,6 @@ func (c *collector) collectDatabase(o CollectConfig) {
 	}
 	if !arrayHas(o.Omit, "tables") && !arrayHas(o.Omit, "triggers") {
 		c.getDisabledTriggers()
-	}
-	if !arrayHas(o.Omit, "statements") {
-		c.getStatements()
 	}
 	c.getBloat()
 
