@@ -1606,8 +1606,8 @@ func (c *collector) getLockRows() {
 	defer cancel()
 
 	q := `
-SELECT COALESCE(D.datname, ''), L.locktype, L.mode, L.granted, L.pid,
-	   COALESCE(L.relation, 0)
+SELECT COALESCE(D.datname, ''), L.locktype, L.mode, L.granted,
+       COALESCE(L.pid, 0), COALESCE(L.relation, 0)
   FROM pg_locks L LEFT OUTER JOIN pg_database D ON L.database = D.oid`
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
