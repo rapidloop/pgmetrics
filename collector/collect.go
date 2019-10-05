@@ -1566,17 +1566,49 @@ func (c *collector) getWALCounts() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	q1 := `SELECT COUNT(*) FROM pg_ls_dir('pg_xlog') WHERE pg_ls_dir ~ '^[0-9A-F]{24}'`
-	q2 := `SELECT COUNT(*) FROM pg_ls_dir('pg_xlog/archive_status') WHERE pg_ls_dir ~ '^[0-9A-F]{24}.ready'`
+	q1 := `SELECT pg_ls_dir FROM pg_ls_dir('pg_xlog') WHERE pg_ls_dir ~ '^[0-9A-F]{24}$'`
+	q2 := `SELECT COUNT(*) FROM pg_ls_dir('pg_xlog/archive_status') WHERE pg_ls_dir ~ '^[0-9A-F]{24}.ready$'`
 
 	if c.version >= 100000 {
 		q1 = strings.Replace(q1, "pg_xlog", "pg_wal", -1)
 		q2 = strings.Replace(q2, "pg_xlog", "pg_wal", -1)
 	}
 
-	if err := c.db.QueryRowContext(ctx, q1).Scan(&c.result.WALCount); err != nil {
-		c.result.WALCount = -1 // ignore errors, need superuser
+	// see postgres source include/access/xlog_internal.h
+	const walSegmentSize = 16 * 1024 * 1024 // TODO: use "wal_segment_size" setting
+	const xLogSegmentsPerXLogID = 0x100000000 / walSegmentSize
+
+	// go through all the WAL filenames (ignore errors, need superuser)
+	c.result.WALCount = -1
+	c.result.HighestWALSegment = 0
+	count, highest := 0, uint64(0)
+	if rows, err := c.db.QueryContext(ctx, q1); err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil || len(name) != 24 {
+				count = -1
+				break
+			}
+			count++ // count the number of wal files
+			logno, err1 := strconv.ParseUint(name[8:16], 16, 64)
+			segno, err2 := strconv.ParseUint(name[16:], 16, 64)
+			if err1 != nil || err2 != nil {
+				count = -1
+				break
+			}
+			logsegno := logno*xLogSegmentsPerXLogID + segno
+			if logsegno > highest { // remember the highest vluae
+				highest = logsegno
+			}
+		}
+		if err := rows.Err(); err == nil && count != -1 {
+			c.result.WALCount = count
+			c.result.HighestWALSegment = highest
+		}
 	}
+
+	// count the number of WAL files that are ready for archiving
 	if err := c.db.QueryRowContext(ctx, q2).Scan(&c.result.WALReadyCount); err != nil {
 		c.result.WALReadyCount = -1 // ignore errors, need superuser
 	}

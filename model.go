@@ -18,13 +18,14 @@ package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
+//    1.6 - added highest WAL segment number
 //    1.5 - add PID to replication_outgoing entries
 //    1.4 - pgbouncer information
 //    1.3 - locks information
 //    1.2 - more table and index attributes
 //    1.1 - added NotificationQueueUsage and Statements
 //    1.0 - initial release
-const ModelSchemaVersion = "1.5"
+const ModelSchemaVersion = "1.6"
 
 // Model contains the entire information collected by a single run of
 // pgmetrics. It can be converted to and from json without loss of
@@ -116,6 +117,11 @@ type Model struct {
 	// following fields present only in schema 1.4 and later
 
 	PgBouncer *PgBouncer `json:"pgbouncer,omitempty"`
+
+	// following fields are present only in schema 1.6 and later
+
+	// the numerically highest wal segment number
+	HighestWALSegment uint64 `json:"highwal,omitempty"`
 }
 
 // DatabaseByOID iterates over the databases in the model and returns the reference
