@@ -1,5 +1,5 @@
-FROM golang:1.12
-RUN GO111MODULES=on CGO_ENABLED=0 GOOS=linux go get -a -installsuffix cgo github.com/rapidloop/pgmetrics/cmd/pgmetrics
+FROM golang:1.13
+RUN GO111MODULES=on CGO_ENABLED=0 GOOS=linux go get -a github.com/rapidloop/pgmetrics/cmd/pgmetrics
 
 FROM alpine:latest  
 RUN apk --no-cache add ca-certificates
