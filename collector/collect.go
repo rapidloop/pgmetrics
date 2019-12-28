@@ -418,8 +418,13 @@ func arrayHas(arr []string, val string) bool {
 }
 
 // schemaOK checks to see if this schema is OK to be collected, based on the
-// --schema/--exclude-schema constraints.
+// --schema/--exclude-schema constraints. Also forces exclusion of pg_temp_*
+// schemas.
 func (c *collector) schemaOK(name string) bool {
+	if strings.HasPrefix(name, "pg_temp_") {
+		// exclude temporary tables, indexes on them
+		return false
+	}
 	if c.rxSchema != nil {
 		// exclude things that don't match --schema
 		if !c.rxSchema.MatchString(name) {
