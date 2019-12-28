@@ -1317,7 +1317,7 @@ PgBouncer Databases:
 					cols = append(cols, "(internal)")
 				} else {
 					host := db.Host
-					if strings.Index(host, ":") >= 0 {
+					if strings.Contains(host, ":") {
 						host = "[" + host + "]"
 					}
 					user := db.User
@@ -1398,13 +1398,6 @@ func fmtTime(at int64) string {
 	return time.Unix(at, 0).Format("2 Jan 2006 3:04:05 PM")
 }
 
-func fmtTimeDef(at int64, def string) string {
-	if at == 0 {
-		return def
-	}
-	return time.Unix(at, 0).Format("2 Jan 2006 3:04:05 PM")
-}
-
 func fmtTimeAndSince(at int64) string {
 	if at == 0 {
 		return ""
@@ -1412,6 +1405,14 @@ func fmtTimeAndSince(at int64) string {
 	t := time.Unix(at, 0)
 	return fmt.Sprintf("%s (%s)", t.Format("2 Jan 2006 3:04:05 PM"),
 		humanize.Time(t))
+}
+
+/* currently unused:
+func fmtTimeDef(at int64, def string) string {
+	if at == 0 {
+		return def
+	}
+	return time.Unix(at, 0).Format("2 Jan 2006 3:04:05 PM")
 }
 
 func fmtTimeAndSinceDef(at int64, def string) string {
@@ -1422,6 +1423,15 @@ func fmtTimeAndSinceDef(at int64, def string) string {
 	return fmt.Sprintf("%s (%s)", t.Format("2 Jan 2006 3:04:05 PM"),
 		humanize.Time(t))
 }
+
+func fmtSeconds(s string) string {
+	v, err := strconv.Atoi(s)
+	if err != nil {
+		return s
+	}
+	return (time.Duration(v) * time.Second).String()
+}
+*/
 
 func fmtSince(at int64) string {
 	if at == 0 {
@@ -1442,14 +1452,6 @@ func fmtYesBlank(v bool) string {
 		return "yes"
 	}
 	return ""
-}
-
-func fmtSeconds(s string) string {
-	v, err := strconv.Atoi(s)
-	if err != nil {
-		return s
-	}
-	return (time.Duration(v) * time.Second).String()
 }
 
 func fmtLag(a, b, qual string) string {
@@ -1516,7 +1518,7 @@ func getSettingBytes(result *pgmetrics.Model, key string, factor uint64) string 
 		return s
 	}
 	val, err := strconv.ParseUint(s, 10, 64)
-	if err != nil || val <= 0 {
+	if err != nil || val == 0 {
 		return s
 	}
 	return s + " (" + humanize.IBytes(val*factor) + ")"

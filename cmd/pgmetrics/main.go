@@ -319,7 +319,7 @@ func process(result *pgmetrics.Model, o options, args []string) {
 			pager = "more"
 		}
 	}
-	usePager := o.output == "" && o.nopager == false && pager != "" &&
+	usePager := o.output == "" && !o.nopager && pager != "" &&
 		terminal.IsTerminal(int(os.Stdout.Fd()))
 	if usePager {
 		cmd := exec.Command(pager)
@@ -334,7 +334,7 @@ func process(result *pgmetrics.Model, o options, args []string) {
 		}
 		writeTo(pagerStdin, o, result)
 		pagerStdin.Close()
-		cmd.Wait()
+		_ = cmd.Wait()
 	} else if o.output != "" {
 		f, err := os.Create(o.output)
 		if err != nil {

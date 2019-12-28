@@ -784,7 +784,7 @@ func (c *collector) getLastXactv95() {
 
 	q := `SELECT xid, COALESCE(EXTRACT(EPOCH FROM timestamp)::bigint, 0)
 			FROM pg_last_committed_xact()`
-	c.db.QueryRowContext(ctx, q).Scan(&c.result.LastXactXid, &c.result.LastXactTimestamp)
+	_ = c.db.QueryRowContext(ctx, q).Scan(&c.result.LastXactXid, &c.result.LastXactTimestamp)
 	// ignore errors, works only if "track_commit_timestamp" is "on"
 }
 
@@ -1533,7 +1533,7 @@ func (c *collector) getStatements() {
 		// queryid, but we don't support that (postgres v9.3 and below).
 		// We can't check the extension version upfront since it might not have
 		// been collected (--omit=extensions).
-		if strings.Index(err.Error(), "min_time") >= 0 {
+		if strings.Contains(err.Error(), "min_time") {
 			q = strings.Replace(q, "min_time", "0", 1)
 			q = strings.Replace(q, "max_time", "0", 1)
 			q = strings.Replace(q, "stddev_time", "0", 1)
