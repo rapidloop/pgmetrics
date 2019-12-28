@@ -1186,6 +1186,17 @@ Table #%d in "%s":
     Bloat:               %s`, humanize.IBytes(uint64(t.Bloat)))
 				}
 			}
+			if acls := parseACL(t.ACL); len(acls) > 0 {
+				fmt.Fprintf(fd, `
+    ACL:
+`)
+				var tw tableWriter
+				tw.add("Role", "Privileges", "Granted By")
+				for _, a := range acls {
+					tw.add(a.role, strings.Join(a.privs, ", "), a.grantor)
+				}
+				tw.write(fd, "      ")
+			}
 			fmt.Fprintln(fd)
 
 			idxs := filterIndexesByTable(result, db, t.SchemaName, t.Name)
@@ -1584,6 +1595,50 @@ func getMaxWalSize(result *pgmetrics.Model) (string, string) {
 		key = "checkpoint_segments"
 	}
 	return key, getSettingBytes(result, key, 16*1024*1024)
+}
+
+type aclItem struct {
+	role    string
+	privs   []string
+	grantor string
+}
+
+var aclMap = map[byte]string{
+	'a': "INSERT",
+	'r': "SELECT",
+	'w': "UPDATE",
+	'd': "DELETE",
+	'D': "TRUNCATE",
+	'x': "REFERENCES",
+	't': "TRIGGER",
+	'X': "EXECUTE",
+	'U': "USAGE",
+	'C': "CREATE",
+	'T': "TEMPORARY",
+	'c': "CONNECT",
+}
+
+// see src/backend/utils/adt/acl.c
+func parseACL(acl string) (out []aclItem) {
+	for _, item := range strings.Split(acl, "\n") {
+		if slash := strings.Split(item, "/"); len(slash) == 2 {
+			e := aclItem{grantor: slash[1]}
+			if eq := strings.Split(slash[0], "="); len(eq) == 2 {
+				if eq[0] == "" {
+					e.role = "PUBLIC"
+				} else {
+					e.role = eq[0]
+				}
+				for _, c := range eq[1] {
+					if p, ok := aclMap[byte(c)]; ok {
+						e.privs = append(e.privs, p)
+					}
+				}
+				out = append(out, e)
+			}
+		}
+	}
+	return
 }
 
 //------------------------------------------------------------------------------

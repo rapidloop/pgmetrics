@@ -1159,7 +1159,7 @@ func (c *collector) getTables(fillSize bool) {
 			COALESCE(IO.toast_blks_read, 0), COALESCE(IO.toast_blks_hit, 0),
 			COALESCE(IO.tidx_blks_read, 0), COALESCE(IO.tidx_blks_hit, 0),
 			C.relkind, C.relpersistence, C.relnatts, age(C.relfrozenxid),
-			C.relispartition, C.reltablespace
+			C.relispartition, C.reltablespace, COALESCE(array_to_string(C.relacl, E'\n'), '')
 		  FROM pg_stat_user_tables AS S
 			JOIN pg_statio_user_tables AS IO
 			ON S.relid = IO.relid
@@ -1191,7 +1191,7 @@ func (c *collector) getTables(fillSize bool) {
 			&t.HeapBlksRead, &t.HeapBlksHit, &t.IdxBlksRead, &t.IdxBlksHit,
 			&t.ToastBlksRead, &t.ToastBlksHit, &t.TidxBlksRead, &t.TidxBlksHit,
 			&t.RelKind, &t.RelPersistence, &t.RelNAtts, &t.AgeRelFrozenXid,
-			&t.RelIsPartition, &tblspcOID); err != nil {
+			&t.RelIsPartition, &tblspcOID, &t.ACL); err != nil {
 			log.Fatalf("pg_stat(io)_user_tables query failed: %v", err)
 		}
 		t.Size = -1  // will be filled in later if asked for

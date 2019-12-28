@@ -337,6 +337,8 @@ type Table struct {
 	TablespaceName  string `json:"tablespace_name"`
 	ParentName      string `json:"parent_name"`
 	PartitionCV     string `json:"partition_cv"` // partition constraint value
+	// following fields present only in schema 1.7 and later
+	ACL string `json:"acl,omitempty"`
 }
 
 type Index struct {
