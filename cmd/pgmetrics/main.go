@@ -54,13 +54,16 @@ Collection options:
   -A, --exclude-table=REGEXP   do NOT collect from table(s) matching POSIX regexp
       --omit=WHAT              do NOT collect the items specified as a comma-separated
                                    list of: "tables", "indexes", "sequences",
-                                   "functions", "extensions", "triggers", "statements"
+                                   "functions", "extensions", "triggers",
+                                   "statements", "log"
       --sql-length=LIMIT       collect only first LIMIT characters of all SQL
                                    queries (default: 500)
       --statements-limit=LIMIT collect only utmost LIMIT number of row from
                                    pg_stat_statements (default: 100)
       --only-listed            collect info only about the databases listed as
                                    command-line args (use with Heroku)
+      --log-file               location of PostgreSQL log file
+      --log-span=MINS          examine the last MINS minutes of logs (default: 5)
 
 Output options:
   -f, --format=FORMAT          output format; "human", "json" or "csv" (default: "human")
@@ -190,6 +193,8 @@ func (o *options) parse() (args []string) {
 	s.UintVarLong(&o.CollectConfig.SQLLength, "sql-length", 0, "")
 	s.UintVarLong(&o.CollectConfig.StmtsLimit, "statements-limit", 0, "")
 	s.BoolVarLong(&o.CollectConfig.OnlyListedDBs, "only-listed", 0, "").SetFlag()
+	s.StringVarLong(&o.CollectConfig.LogFile, "log-file", 0, "")
+	s.UintVarLong(&o.CollectConfig.LogSpan, "log-span", 0, "")
 	// output
 	s.StringVarLong(&o.format, "format", 'f', "")
 	s.StringVarLong(&o.output, "output", 'o', "")
@@ -250,7 +255,7 @@ func (o *options) parse() (args []string) {
 	for _, om := range o.CollectConfig.Omit {
 		if om != "tables" && om != "indexes" && om != "sequences" &&
 			om != "functions" && om != "extensions" && om != "triggers" &&
-			om != "statements" {
+			om != "statements" && om != "log" {
 			fmt.Fprintf(os.Stderr, "unknown item \"%s\" in --omit option\n", om)
 			printTry()
 			os.Exit(2)

@@ -18,6 +18,7 @@ package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
+//    1.7 - query execution plans
 //    1.6 - added highest WAL segment number
 //    1.5 - add PID to replication_outgoing entries
 //    1.4 - pgbouncer information
@@ -25,7 +26,7 @@ package pgmetrics
 //    1.2 - more table and index attributes
 //    1.1 - added NotificationQueueUsage and Statements
 //    1.0 - initial release
-const ModelSchemaVersion = "1.6"
+const ModelSchemaVersion = "1.7"
 
 // Model contains the entire information collected by a single run of
 // pgmetrics. It can be converted to and from json without loss of
@@ -122,6 +123,11 @@ type Model struct {
 
 	// the numerically highest wal segment number
 	HighestWALSegment uint64 `json:"highwal,omitempty"`
+
+	// following fields are present only in schema 1.7 and later
+
+	// query execution plans
+	Plans []Plan `json:"plans,omitempty"`
 }
 
 // DatabaseByOID iterates over the databases in the model and returns the reference
@@ -603,4 +609,14 @@ type PgBouncerStat struct {
 	AvgXactTime     float64 `json:"avg_xact_time"`  // seconds
 	AvgQueryTime    float64 `json:"avg_query_time"` // seconds
 	AvgWaitTime     float64 `json:"avg_wait_time"`  // seconds
+}
+
+// Plans represents a query execution plan. Added in schema 1.7.
+type Plan struct {
+	Database string `json:"db_name"` // might be empty
+	UserName string `json:"user"`    // might be empty
+	Format   string `json:"format"`  // text, json, yaml or xml
+	At       int64  `json:"at"`      // time when plan was logged, as seconds since epoch
+	Query    string `json:"query"`   // the sql query
+	Plan     string `json:"plan"`    // the plan as a string
 }

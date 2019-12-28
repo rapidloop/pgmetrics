@@ -24,6 +24,7 @@ import (
 	"math"
 	"os"
 	"os/user"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -65,6 +66,8 @@ type CollectConfig struct {
 	StmtsLimit    uint
 	Omit          []string
 	OnlyListedDBs bool
+	LogFile       string
+	LogSpan       uint
 
 	// connection
 	Host     string
@@ -90,6 +93,7 @@ func DefaultCollectConfig() CollectConfig {
 		//OnlyListedDBs: false,
 		SQLLength:  500,
 		StmtsLimit: 100,
+		LogSpan:    5,
 
 		// ------------------ connection
 		//Password: "",
@@ -176,6 +180,9 @@ func Collect(o CollectConfig, dbnames []string) *pgmetrics.Model {
 			collectFromDB(connstr+makeKV("dbname", dbname), c, o)
 		}
 	}
+	if !arrayHas(o.Omit, "log") && c.local {
+		c.collectLogs(o)
+	}
 
 	return &c.result
 }
@@ -217,6 +224,8 @@ type collector struct {
 	sqlLength    uint
 	stmtsLimit   uint
 	dbnames      []string
+	curlogfile   string
+	logSpan      uint
 }
 
 func (c *collector) collect(db *sql.DB, o CollectConfig) {
@@ -239,9 +248,10 @@ func (c *collector) collectFirst(db *sql.DB, o CollectConfig) {
 	c.rxTable = getRegexp(o.Table)
 	c.rxExclTable = getRegexp(o.ExclTable)
 
-	// save sql length and statement limits
+	// save limits
 	c.sqlLength = o.SQLLength
 	c.stmtsLimit = o.StmtsLimit
+	c.logSpan = o.LogSpan
 
 	// current time is the report start time
 	c.result.Metadata.At = time.Now().Unix()
@@ -355,6 +365,10 @@ func (c *collector) collectCluster(o CollectConfig) {
 
 	if !arrayHas(o.Omit, "statements") {
 		c.getStatements()
+	}
+
+	if !arrayHas(o.Omit, "log") {
+		c.getLogInfo()
 	}
 }
 
@@ -2168,6 +2182,67 @@ func (c *collector) getPBDatabases() {
 	if err := rows.Err(); err != nil {
 		log.Fatalf("show databases query failed: %v", err)
 	}
+}
+
+//------------------------------------------------------------------------------
+// log file collection
+
+func (c *collector) getLogInfo() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT COALESCE(pg_current_logfile(),'')`
+	_ = c.db.QueryRowContext(ctx, q).Scan(&c.curlogfile)
+	// ignore any errors, it's ok for the query to fail.
+	// pg_current_logfile is available only in pg10+
+}
+
+func fileExists(f string) bool {
+	if fi, err := os.Stat(f); err == nil && fi != nil && fi.Mode().IsRegular() {
+		return true
+	} else if os.IsPermission(err) {
+		log.Printf("access denied trying to open log file %s", f)
+	}
+	return false
+}
+
+func (c *collector) collectLogs(o CollectConfig) {
+	// try to guess the log file location:
+	//  1. use the user-supplied filename
+	//	2. if pg_current_logfile is available, try "$PGDATA/" + that
+	//	3. /var/log/postgresql/postgresql-{MAJOR_VERSION}-main.log
+	var logfile string
+	if len(o.LogFile) > 0 {
+		if !fileExists(o.LogFile) {
+			log.Printf("warning: failed to locate/read specified log file %s", o.LogFile)
+			return
+		}
+		logfile = o.LogFile
+	} else {
+		if len(c.curlogfile) > 0 {
+			if f := filepath.Join(c.dataDir, c.curlogfile); fileExists(f) {
+				logfile = f
+			}
+		}
+		var mv string
+		if len(logfile) == 0 {
+			if c.version >= 100000 {
+				mv = strconv.Itoa(c.version / 10000)
+			} else {
+				mv = fmt.Sprintf("%d.%d", c.version/10000, (c.version/100)%100)
+			}
+			if f := fmt.Sprintf("/var/log/postgresql/postgresql-%s-main.log", mv); fileExists(f) {
+				logfile = f
+			}
+		}
+		if len(logfile) == 0 {
+			log.Print("warning: failed to guess log file location/access denied, specify explicitly with --log-file")
+			return
+		}
+	}
+
+	//log.Printf("found log file location %s, using span %d", logfile, c.logSpan)
+	readLog(logfile, c.logSpan, &c.result)
 }
 
 //------------------------------------------------------------------------------
