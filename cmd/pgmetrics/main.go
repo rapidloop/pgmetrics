@@ -356,7 +356,7 @@ func main() {
 	o.defaults()
 	args := o.parse()
 	if !o.passNone && len(o.input) == 0 && os.Getenv("PGPASSWORD") == "" {
-		fmt.Print("Password: ")
+		fmt.Fprint(os.Stderr, "Password: ")
 		p, err := gopass.GetPasswd()
 		if err != nil {
 			os.Exit(1)
