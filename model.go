@@ -18,7 +18,7 @@ package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
-//    1.7 - query execution plans, autovacuum
+//    1.7 - query execution plans, autovacuum, deadlocks
 //    1.6 - added highest WAL segment number
 //    1.5 - add PID to replication_outgoing entries
 //    1.4 - pgbouncer information
@@ -131,6 +131,9 @@ type Model struct {
 
 	// autovacuum information
 	AutoVacuums []AutoVacuum `json:"autovacuums,omitempty"`
+
+	// deadlock information
+	Deadlocks []Deadlock `json:"deadlocks,omitempty"`
 }
 
 // DatabaseByOID iterates over the databases in the model and returns the reference
@@ -632,4 +635,9 @@ type AutoVacuum struct {
 	At      int64   `json:"at"`         // time when activity was logged, as seconds since epoch
 	Table   string  `json:"table_name"` // fully qualified, db.schema.table
 	Elapsed float64 `json:"elapsed"`    // in seconds
+}
+
+type Deadlock struct {
+	At     int64  `json:"at"`     // time when activity was logged, as seconds since epoch
+	Detail string `json:"detail"` // information about the deadlocking processes
 }

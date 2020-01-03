@@ -166,6 +166,15 @@ type logEntry struct {
 	extra []logEntryExtra
 }
 
+func (l *logEntry) get(level string) string {
+	for _, e := range l.extra {
+		if e.level == level {
+			return e.line
+		}
+	}
+	return ""
+}
+
 type logEntryExtra struct {
 	level string
 	line  string
@@ -200,6 +209,8 @@ func (c *collector) processLogEntry() {
 		c.processAE(sm)
 	} else if sm := rxAVStart.FindStringSubmatch(c.currLog.line); sm != nil {
 		c.processAV(sm)
+	} else if c.currLog.line == "deadlock detected" {
+		c.processDeadlock()
 	}
 }
 
@@ -263,6 +274,12 @@ func (c *collector) processAV(sm []string) {
 		Table:   sm[3],
 		Elapsed: elapsed,
 	})
+}
+
+func (c *collector) processDeadlock() {
+	e := c.currLog
+	text := strings.ReplaceAll(e.get("DETAIL"), "\t", "") + "\n"
+	c.result.Deadlocks = append(c.result.Deadlocks, pgmetrics.Deadlock{At: e.t.Unix(), Detail: text})
 }
 
 //------------------------------------------------------------------------------
