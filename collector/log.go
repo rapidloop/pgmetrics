@@ -24,7 +24,28 @@ var (
 	rxAVElapsed = regexp.MustCompile(`, elapsed: ([0-9.]+) s`)
 )
 
-func readLogLines(filename string, window time.Duration, prefix *regexp.Regexp, result *pgmetrics.Model) error {
+func (c *collector) readLog(filename string) {
+	var prefix string
+	if s, ok := c.result.Settings["log_line_prefix"]; ok {
+		prefix = s.Setting
+	} else {
+		log.Print("failed to get log_line_prefix setting, cannot read log file")
+		return
+	}
+
+	prefixRE, err := compilePrefix(prefix)
+	if err != nil {
+		log.Print(err)
+		return
+	}
+
+	if err := c.readLogLines(filename, prefixRE); err != nil {
+		log.Print(err)
+		return
+	}
+}
+
+func (c *collector) readLogLines(filename string, prefix *regexp.Regexp) error {
 	f, err := os.Open(filename)
 	if err != nil {
 		return err
@@ -32,6 +53,7 @@ func readLogLines(filename string, window time.Duration, prefix *regexp.Regexp, 
 	defer f.Close()
 
 	// we're seeking to just before this
+	window := time.Duration(c.logSpan) * time.Minute
 	start := time.Now().Add(-window)
 
 	// get current length of file
@@ -76,9 +98,8 @@ func readLogLines(filename string, window time.Duration, prefix *regexp.Regexp, 
 		}
 		// we need to seek backward
 		if ofs == 0 {
-			// oops reached the top
-			//log.Printf("nothing recent in file")
-			return nil
+			// reached the top, we need the whole file
+			break
 		}
 		ofs -= 4096 // go back by 4k
 	}
@@ -92,6 +113,7 @@ func readLogLines(filename string, window time.Duration, prefix *regexp.Regexp, 
 		return err
 	}
 
+	count := 0
 	pos := prefix.FindIndex(bigbuf)
 	for len(pos) == 2 && len(bigbuf) > 0 {
 		// match again for submatches, can't do this in one go :-(
@@ -122,26 +144,72 @@ func readLogLines(filename string, window time.Duration, prefix *regexp.Regexp, 
 				level = match[1]
 				line = line[len(match[0]):]
 			}
-			processLogLine(t, user, db, level, line, result)
+			c.processLogLine(count == 0, t, user, db, level, line)
+			count++
 		}
+	}
+
+	if count > 0 {
+		c.processLogEntry()
 	}
 	return nil
 }
 
-func processLogLine(t time.Time, user, db, level, line string, result *pgmetrics.Model) {
-	if sm := rxAEStart.FindStringSubmatch(line); sm != nil {
-		processAE(t, user, db, level, line, result, sm)
-	} else if sm := rxAVStart.FindStringSubmatch(line); sm != nil {
-		processAV(t, user, db, level, line, result, sm)
+var severities = []string{"DEBUG", "LOG", "INFO", "NOTICE", "WARNING", "ERROR", "FATAL", "PANIC"}
+
+type logEntry struct {
+	t     time.Time
+	user  string
+	db    string
+	level string
+	line  string
+	extra []logEntryExtra
+}
+
+type logEntryExtra struct {
+	level string
+	line  string
+}
+
+func (c *collector) processLogLine(first bool, t time.Time, user, db, level, line string) {
+	//log.Printf("debug:got log line [%s] [%s] [%s] [%s]", user, db, level, line)
+	// is this the start of a new entry?
+	start := false
+	for _, s := range severities {
+		if level == s {
+			start = true
+			break
+		}
+	}
+	if start {
+		// flush if required
+		if !first {
+			c.processLogEntry()
+		}
+		// start new entry
+		c.currLog = logEntry{t: t, user: user, db: db, level: level, line: line, extra: nil}
+	} else {
+		// add to extra
+		c.currLog.extra = append(c.currLog.extra, logEntryExtra{level: level, line: line})
 	}
 }
 
-func processAE(t time.Time, user, db, level, line string, result *pgmetrics.Model, sm []string) {
-	p := pgmetrics.Plan{Database: db, UserName: user, Format: "text", At: t.Unix()}
+func (c *collector) processLogEntry() {
+	//log.Printf("debug: got log entry %+v", c.currLog)
+	if sm := rxAEStart.FindStringSubmatch(c.currLog.line); sm != nil {
+		c.processAE(sm)
+	} else if sm := rxAVStart.FindStringSubmatch(c.currLog.line); sm != nil {
+		c.processAV(sm)
+	}
+}
+
+func (c *collector) processAE(sm []string) {
+	e := c.currLog
+	p := pgmetrics.Plan{Database: e.db, UserName: e.user, Format: "text", At: e.t.Unix()}
 	switch {
 	case len(sm[1]) > 0:
 		p.Format = "json"
-		if parts := strings.SplitN(line, "\n", 2); len(parts) == 2 { // has to be 2
+		if parts := strings.SplitN(e.line, "\n", 2); len(parts) == 2 { // has to be 2
 			var obj map[string]interface{}
 			if err := json.Unmarshal([]byte(parts[1]), &obj); err == nil {
 				// extract the query and remove it out
@@ -163,7 +231,7 @@ func processAE(t time.Time, user, db, level, line string, result *pgmetrics.Mode
 	case len(sm[4]) > 0:
 		p.Format = "text"
 		var sp *string = nil
-		for _, l := range strings.Split(line, "\n") {
+		for _, l := range strings.Split(e.line, "\n") {
 			if sm := rxAESwitch1.FindStringSubmatch(l); sm != nil {
 				p.Query = sm[1]
 				sp = &p.Query
@@ -177,24 +245,27 @@ func processAE(t time.Time, user, db, level, line string, result *pgmetrics.Mode
 			}
 		}
 	}
-	result.Plans = append(result.Plans, p)
+	c.result.Plans = append(c.result.Plans, p)
 }
 
-func processAV(t time.Time, user, db, level, line string, result *pgmetrics.Model, sm []string) {
+func (c *collector) processAV(sm []string) {
+	e := c.currLog
 	if len(sm) != 4 {
 		return
 	}
-	sm2 := rxAVElapsed.FindStringSubmatch(line)
+	sm2 := rxAVElapsed.FindStringSubmatch(e.line)
 	if len(sm2) != 2 {
 		return
 	}
 	elapsed, _ := strconv.ParseFloat(sm2[1], 64)
-	result.AutoVacuums = append(result.AutoVacuums, pgmetrics.AutoVacuum{
-		At:      t.Unix(),
+	c.result.AutoVacuums = append(c.result.AutoVacuums, pgmetrics.AutoVacuum{
+		At:      e.t.Unix(),
 		Table:   sm[3],
 		Elapsed: elapsed,
 	})
 }
+
+//------------------------------------------------------------------------------
 
 func getMatchData(match [][]byte, prefix *regexp.Regexp) (t time.Time, user, db string, err error) {
 	idxT, idxM, idxN := -1, -1, -1
@@ -282,7 +353,7 @@ func firstTS(buf []byte, prefix *regexp.Regexp) (t time.Time, err error) {
 }
 
 func compilePrefix(prefix string) (*regexp.Regexp, error) {
-	ts := false
+	ts, hasq := false, false
 	var r string
 	for i := 0; i < len(prefix); i++ {
 		if prefix[i] != '%' {
@@ -309,35 +380,19 @@ func compilePrefix(prefix string) (*regexp.Regexp, error) {
 			r += `(?P<u>[A-Za-z0-9_.\[\]-]{1,64})`
 		case 'd': // database name
 			r += `(?P<d>[A-Za-z0-9_.\[\]-]{1,64})`
-		case 'q': // ignore, processing directive
+		case 'q': // rest are optional
+			r += `(?:` // needs termination
+			hasq = true
 		default: // optional sequence of non-whitespace characters
 			r += `(\S+)?`
 		}
+	}
+	if hasq {
+		r += `)?`
 	}
 
 	if !ts {
 		return nil, errors.New("no timestamp escape sequence was found in log_line_prefix")
 	}
 	return regexp.Compile(r)
-}
-
-func readLog(filename string, spanMins uint, result *pgmetrics.Model) {
-	var prefix string
-	if s, ok := result.Settings["log_line_prefix"]; ok {
-		prefix = s.Setting
-	} else {
-		log.Print("failed to get log_line_prefix setting, cannot read log file")
-		return
-	}
-
-	prefixRE, err := compilePrefix(prefix)
-	if err != nil {
-		log.Print(err)
-		return
-	}
-
-	if err := readLogLines(filename, time.Duration(spanMins)*time.Minute, prefixRE, result); err != nil {
-		log.Print(err)
-		return
-	}
 }

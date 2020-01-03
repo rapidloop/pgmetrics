@@ -226,6 +226,7 @@ type collector struct {
 	dbnames      []string
 	curlogfile   string
 	logSpan      uint
+	currLog      logEntry
 }
 
 func (c *collector) collect(db *sql.DB, o CollectConfig) {
@@ -2247,7 +2248,7 @@ func (c *collector) collectLogs(o CollectConfig) {
 	}
 
 	//log.Printf("found log file location %s, using span %d", logfile, c.logSpan)
-	readLog(logfile, c.logSpan, &c.result)
+	c.readLog(logfile)
 }
 
 //------------------------------------------------------------------------------
