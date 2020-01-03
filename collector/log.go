@@ -20,6 +20,8 @@ var (
 	rxAEStart   = regexp.MustCompile(`^duration: [0-9]+\.[0-9]+ ms  plan:\n[ \t]+({[ \t]*\n)?(<explain xml.*\n)?(Query Text: ".*"\n)?(Query Text: [^"].*\n)?`)
 	rxAESwitch1 = regexp.MustCompile(`^\s+Query Text: (.*)$`)
 	rxAESwitch2 = regexp.MustCompile(`cost=\d+.*rows=\d`)
+	rxAVStart   = regexp.MustCompile(`automatic (aggressive )?vacuum (to prevent wraparound)?of table "([^"]+)": index`)
+	rxAVElapsed = regexp.MustCompile(`, elapsed: ([0-9.]+) s`)
 )
 
 func readLogLines(filename string, window time.Duration, prefix *regexp.Regexp, result *pgmetrics.Model) error {
@@ -127,11 +129,14 @@ func readLogLines(filename string, window time.Duration, prefix *regexp.Regexp, 
 }
 
 func processLogLine(t time.Time, user, db, level, line string, result *pgmetrics.Model) {
-	sm := rxAEStart.FindStringSubmatch(line)
-	if sm == nil {
-		return
+	if sm := rxAEStart.FindStringSubmatch(line); sm != nil {
+		processAE(t, user, db, level, line, result, sm)
+	} else if sm := rxAVStart.FindStringSubmatch(line); sm != nil {
+		processAV(t, user, db, level, line, result, sm)
 	}
+}
 
+func processAE(t time.Time, user, db, level, line string, result *pgmetrics.Model, sm []string) {
 	p := pgmetrics.Plan{Database: db, UserName: user, Format: "text", At: t.Unix()}
 	switch {
 	case len(sm[1]) > 0:
@@ -173,6 +178,22 @@ func processLogLine(t time.Time, user, db, level, line string, result *pgmetrics
 		}
 	}
 	result.Plans = append(result.Plans, p)
+}
+
+func processAV(t time.Time, user, db, level, line string, result *pgmetrics.Model, sm []string) {
+	if len(sm) != 4 {
+		return
+	}
+	sm2 := rxAVElapsed.FindStringSubmatch(line)
+	if len(sm2) != 2 {
+		return
+	}
+	elapsed, _ := strconv.ParseFloat(sm2[1], 64)
+	result.AutoVacuums = append(result.AutoVacuums, pgmetrics.AutoVacuum{
+		At:      t.Unix(),
+		Table:   sm[3],
+		Elapsed: elapsed,
+	})
 }
 
 func getMatchData(match [][]byte, prefix *regexp.Regexp) (t time.Time, user, db string, err error) {

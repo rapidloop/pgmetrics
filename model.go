@@ -18,7 +18,7 @@ package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
-//    1.7 - query execution plans
+//    1.7 - query execution plans, autovacuum
 //    1.6 - added highest WAL segment number
 //    1.5 - add PID to replication_outgoing entries
 //    1.4 - pgbouncer information
@@ -128,6 +128,9 @@ type Model struct {
 
 	// query execution plans
 	Plans []Plan `json:"plans,omitempty"`
+
+	// autovacuum information
+	AutoVacuums []AutoVacuum `json:"autovacuums,omitempty"`
 }
 
 // DatabaseByOID iterates over the databases in the model and returns the reference
@@ -613,7 +616,7 @@ type PgBouncerStat struct {
 	AvgWaitTime     float64 `json:"avg_wait_time"`  // seconds
 }
 
-// Plans represents a query execution plan. Added in schema 1.7.
+// Plan represents a query execution plan. Added in schema 1.7.
 type Plan struct {
 	Database string `json:"db_name"` // might be empty
 	UserName string `json:"user"`    // might be empty
@@ -621,4 +624,12 @@ type Plan struct {
 	At       int64  `json:"at"`      // time when plan was logged, as seconds since epoch
 	Query    string `json:"query"`   // the sql query
 	Plan     string `json:"plan"`    // the plan as a string
+}
+
+// AutoVacuum contains information about a single autovacuum run.
+// Added in schema 1.7.
+type AutoVacuum struct {
+	At      int64   `json:"at"`         // time when activity was logged, as seconds since epoch
+	Table   string  `json:"table_name"` // fully qualified, db.schema.table
+	Elapsed float64 `json:"elapsed"`    // in seconds
 }
