@@ -20,7 +20,7 @@ var (
 	rxAEStart   = regexp.MustCompile(`^duration: [0-9]+\.[0-9]+ ms  plan:\n[ \t]+({[ \t]*\n)?(<explain xml.*\n)?(Query Text: ".*"\n)?(Query Text: [^"].*\n)?`)
 	rxAESwitch1 = regexp.MustCompile(`^\s+Query Text: (.*)$`)
 	rxAESwitch2 = regexp.MustCompile(`cost=\d+.*rows=\d`)
-	rxAVStart   = regexp.MustCompile(`automatic (aggressive )?vacuum (to prevent wraparound)?of table "([^"]+)": index`)
+	rxAVStart   = regexp.MustCompile(`automatic (aggressive )?vacuum (to prevent wraparound )?of table "([^"]+)": index`)
 	rxAVElapsed = regexp.MustCompile(`, elapsed: ([0-9.]+) s`)
 )
 
@@ -235,7 +235,7 @@ func (c *collector) processAE(sm []string) {
 		}
 	case len(sm[2]) > 0:
 		p.Format = "xml"
-		log.Print("warning: yaml format auto_explain output not supported yet")
+		log.Print("warning: xml format auto_explain output not supported yet")
 	case len(sm[3]) > 0:
 		p.Format = "yaml"
 		log.Print("warning: yaml format auto_explain output not supported yet")

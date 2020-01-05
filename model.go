@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 RapidLoop, Inc.
+ * Copyright 2020 RapidLoop, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
-//    1.7 - query execution plans, autovacuum, deadlocks
+//    1.7 - query execution plans, autovacuum, deadlocks, table acl
 //    1.6 - added highest WAL segment number
 //    1.5 - add PID to replication_outgoing entries
 //    1.4 - pgbouncer information
@@ -637,6 +637,8 @@ type AutoVacuum struct {
 	Elapsed float64 `json:"elapsed"`    // in seconds
 }
 
+// Deadlock contains information about a single deadlock detection log.
+// Added in schema 1.7.
 type Deadlock struct {
 	At     int64  `json:"at"`     // time when activity was logged, as seconds since epoch
 	Detail string `json:"detail"` // information about the deadlocking processes
