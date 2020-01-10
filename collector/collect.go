@@ -368,7 +368,7 @@ func (c *collector) collectCluster(o CollectConfig) {
 		c.getStatements()
 	}
 
-	if !arrayHas(o.Omit, "log") {
+	if !arrayHas(o.Omit, "log") && c.local {
 		c.getLogInfo()
 	}
 }
