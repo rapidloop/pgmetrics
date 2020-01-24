@@ -2194,13 +2194,17 @@ func (c *collector) getPBDatabases() {
 // log file collection
 
 func (c *collector) getLogInfo() {
+	// pg_current_logfile is only available in v10 and above
+	if c.version < 100000 {
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
 	q := `SELECT COALESCE(pg_current_logfile(),'')`
 	_ = c.db.QueryRowContext(ctx, q).Scan(&c.curlogfile)
-	// ignore any errors, it's ok for the query to fail.
-	// pg_current_logfile is available only in pg10+
+	// ignore any errors.
 }
 
 func fileExists(f string) bool {
