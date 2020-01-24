@@ -7,17 +7,21 @@ builds:
       - linux
     goarch:
       - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}} -extldflags "-static"
     env:
       - CGO_ENABLED=0
-archive:
-  format: tar.gz
-  format_overrides:
-    - goos: windows
-      format: zip
-  files:
-    - README.md
-    - LICENSE
-  wrap_in_directory: true
+archives:
+  - format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE
+    wrap_in_directory: true
 release:
   draft: true
   github:
