@@ -693,7 +693,7 @@ func (c *collector) getAdminFuncv9() {
 		&c.result.LastWALReceiveLSN, &c.result.LastWALReplayLSN,
 		&c.result.LastXActReplayTimestamp); err != nil {
 		log.Printf("warning: admin functions query failed: %v", err)
-		return
+		// don't return here, continue with the rest
 	}
 
 	if c.result.IsInRecovery {
@@ -726,7 +726,7 @@ func (c *collector) getAdminFuncv10() {
 		&c.result.LastWALReceiveLSN, &c.result.LastWALReplayLSN,
 		&c.result.LastXActReplayTimestamp); err != nil {
 		log.Printf("warning: admin functions query failed: %v", err)
-		return
+		// don't return here, continue with the rest
 	}
 
 	if c.result.IsInRecovery {
