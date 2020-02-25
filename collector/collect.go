@@ -1522,7 +1522,7 @@ func (c *collector) getStatements() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	q := `SELECT userid, dbid, queryid, LEFT(query, $1), calls, total_time,
+	q := `SELECT userid, dbid, queryid, LEFT(COALESCE(query, ''), $1), calls, total_time,
 			min_time, max_time, stddev_time, rows, shared_blks_hit,
 			shared_blks_read, shared_blks_dirtied, shared_blks_written,
 			local_blks_hit, local_blks_read, local_blks_dirtied,
