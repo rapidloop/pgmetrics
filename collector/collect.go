@@ -58,16 +58,17 @@ type CollectConfig struct {
 	NoSizes    bool
 
 	// collection
-	Schema        string
-	ExclSchema    string
-	Table         string
-	ExclTable     string
-	SQLLength     uint
-	StmtsLimit    uint
-	Omit          []string
-	OnlyListedDBs bool
-	LogFile       string
-	LogSpan       uint
+	Schema          string
+	ExclSchema      string
+	Table           string
+	ExclTable       string
+	SQLLength       uint
+	StmtsLimit      uint
+	Omit            []string
+	OnlyListedDBs   bool
+	LogFile         string
+	LogSpan         uint
+	RDSDBIdentifier string
 
 	// connection
 	Host     string
@@ -182,6 +183,11 @@ func Collect(o CollectConfig, dbnames []string) *pgmetrics.Model {
 	}
 	if !arrayHas(o.Omit, "log") && c.local {
 		c.collectLogs(o)
+	}
+
+	// collect from RDS if database id is specified
+	if len(o.RDSDBIdentifier) > 0 {
+		collectFromRDS(o.RDSDBIdentifier, &c.result)
 	}
 
 	return &c.result
@@ -2253,6 +2259,19 @@ func (c *collector) collectLogs(o CollectConfig) {
 
 	//log.Printf("found log file location %s, using span %d", logfile, c.logSpan)
 	c.readLog(logfile)
+}
+
+func collectFromRDS(dbid string, result *pgmetrics.Model) {
+	ac, err := newAwsCollector()
+	if err == nil {
+		rds := &pgmetrics.RDS{}
+		if err = ac.collect(dbid, rds); err == nil {
+			result.RDS = rds
+		}
+	}
+	if err != nil {
+		log.Printf("warning: failed to collect from AWS RDS: %v", err)
+	}
 }
 
 //------------------------------------------------------------------------------

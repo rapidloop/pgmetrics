@@ -64,6 +64,7 @@ Collection options:
                                    command-line args (use with Heroku)
       --log-file               location of PostgreSQL log file
       --log-span=MINS          examine the last MINS minutes of logs (default: 5)
+      --aws-rds-dbid           AWS RDS database identifier
 
 Output options:
   -f, --format=FORMAT          output format; "human", "json" or "csv" (default: "human")
@@ -106,6 +107,15 @@ required/used by pgmetrics and are IGNORED:
   PGHOSTADDR, PGSERVICE,     PGSERVICEFILE, PGREALM,  PGREQUIRESSL,
   PGSSLCRL,   PGREQUIREPEER, PGKRBSRVNAME,  PGGSSLIB, PGSYSCONFDIR,
   PGLOCALEDIR
+
+The following AWS-related environment variables are understood. For
+more details about these refer to the AWS documentation.
+
+  AWS_ACCESS_KEY_ID,   AWS_SECRET_ACCESS_KEY, AWS_REGION,
+  AWS_ACCESS_KEY,      AWS_SECRET_KEY,        AWS_SESSION_TOKEN,
+  AWS_DEFAULT_REGION,  AWS_PROFILE,           AWS_DEFAULT_PROFILE,
+  AWS_SDK_LOAD_CONFIG, AWS_SHARED_CREDENTIALS_FILE,
+  AWS_CONFIG_FILE,     AWS_CA_BUNDLE
 `
 
 var version string // set during build
@@ -195,6 +205,7 @@ func (o *options) parse() (args []string) {
 	s.BoolVarLong(&o.CollectConfig.OnlyListedDBs, "only-listed", 0, "").SetFlag()
 	s.StringVarLong(&o.CollectConfig.LogFile, "log-file", 0, "")
 	s.UintVarLong(&o.CollectConfig.LogSpan, "log-span", 0, "")
+	s.StringVarLong(&o.CollectConfig.RDSDBIdentifier, "aws-rds-dbid", 0, "")
 	// output
 	s.StringVarLong(&o.format, "format", 'f', "")
 	s.StringVarLong(&o.output, "output", 'o', "")

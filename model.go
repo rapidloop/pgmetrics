@@ -18,6 +18,7 @@ package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
+//    1.8 - AWS RDS metrics and Enhanced Monitoring metrics
 //    1.7 - query execution plans, autovacuum, deadlocks, table acl
 //    1.6 - added highest WAL segment number
 //    1.5 - add PID to replication_outgoing entries
@@ -26,7 +27,7 @@ package pgmetrics
 //    1.2 - more table and index attributes
 //    1.1 - added NotificationQueueUsage and Statements
 //    1.0 - initial release
-const ModelSchemaVersion = "1.7"
+const ModelSchemaVersion = "1.8"
 
 // Model contains the entire information collected by a single run of
 // pgmetrics. It can be converted to and from json without loss of
@@ -134,6 +135,11 @@ type Model struct {
 
 	// deadlock information
 	Deadlocks []Deadlock `json:"deadlocks,omitempty"`
+
+	// following fields are present only in schema 1.8 and later
+
+	// metrics from AWS RDS
+	RDS *RDS `json:"rds,omitempty"`
 }
 
 // DatabaseByOID iterates over the databases in the model and returns the reference
@@ -642,4 +648,11 @@ type AutoVacuum struct {
 type Deadlock struct {
 	At     int64  `json:"at"`     // time when activity was logged, as seconds since epoch
 	Detail string `json:"detail"` // information about the deadlocking processes
+}
+
+// RDS contains metrics collected from AWS RDS (also includes Aurora).
+// Added in schema 1.8.
+type RDS struct {
+	Basic    map[string]float64     `json:"basic"`              // Basic Monitoring Metrics
+	Enhanced map[string]interface{} `json:"enhanced,omitempty"` // Enhanced Monitoring
 }
