@@ -791,13 +791,19 @@ func (c *collector) fillIndexSize(idx *pgmetrics.Index) {
 }
 
 func (c *collector) getLastXactv95() {
+	// available only if "track_commit_timestamp" is set to "on"
+	if c.setting("track_commit_timestamp") != "on" {
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
 	q := `SELECT xid, COALESCE(EXTRACT(EPOCH FROM timestamp)::bigint, 0)
 			FROM pg_last_committed_xact()`
-	_ = c.db.QueryRowContext(ctx, q).Scan(&c.result.LastXactXid, &c.result.LastXactTimestamp)
-	// ignore errors, works only if "track_commit_timestamp" is "on"
+	if err := c.db.QueryRowContext(ctx, q).Scan(&c.result.LastXactXid, &c.result.LastXactTimestamp); err != nil {
+		log.Printf("warning: pg_last_committed_xact() failed: %v", err) // continue anyway
+	}
 }
 
 func (c *collector) getStartTime() {
