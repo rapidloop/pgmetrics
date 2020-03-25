@@ -362,7 +362,14 @@ func (c *collector) collectCluster(o CollectConfig) {
 	}
 
 	c.getRoles()
-	c.getWALCounts()
+
+	if c.version >= 120000 {
+		c.getWALCountsv12()
+	} else if c.version >= 110000 {
+		c.getWALCountsv11()
+	} else {
+		c.getWALCounts()
+	}
 
 	if c.version >= 90600 {
 		c.getNotification()
@@ -1594,21 +1601,86 @@ func (c *collector) getStatements() {
 	}
 }
 
+func (c *collector) getWALSegmentSize() (out int) {
+	out = 16 * 1024 * 1024 // default to 16MB
+	if c.version >= 110000 {
+		if v, err := strconv.Atoi(c.setting("wal_segment_size")); err == nil {
+			out = v
+		}
+	} else {
+		v1, err1 := strconv.Atoi(c.setting("wal_segment_size"))
+		v2, err2 := strconv.Atoi(c.setting("wal_block_size"))
+		if err1 == nil && err2 == nil {
+			out = v1 * v2
+		}
+	}
+	return
+}
+
+func (c *collector) isAWS() bool {
+	return len(c.setting("rds.extensions")) > 0
+}
+
+// getWALCountsv12 gets the WAL file and archive ready counts using the
+// following functions (respectively):
+//	pg_ls_waldir
+//	pg_ls_archive_statusdir
+func (c *collector) getWALCountsv12() {
+	q1 := `SELECT name FROM pg_ls_waldir()`
+	q2 := `SELECT COUNT(*) FROM pg_ls_archive_statusdir() WHERE name ~ '^[0-9A-F]{24}.ready$'`
+
+	c.getWALCountsActual(q1, q2)
+}
+
+// getWALCountsv11 gets the WAL file and archive ready counts using the
+// following functions (respectively):
+//	pg_ls_waldir
+//	pg_ls_dir (if not aws)
+func (c *collector) getWALCountsv11() {
+	q1 := `SELECT name FROM pg_ls_waldir()`
+	q2 := `SELECT COUNT(*) FROM pg_ls_dir('pg_wal/archive_status') WHERE pg_ls_dir ~ '^[0-9A-F]{24}.ready$'`
+
+	// no one has perms for pg_ls_dir in AWS RDS, so don't try to get archive
+	// status counts
+	if c.isAWS() {
+		q2 = ""
+		c.result.WALReadyCount = -1
+	}
+
+	c.getWALCountsActual(q1, q2)
+}
+
+// getWALCounts gets the WAL file and archive ready counts using the
+// following functions (respectively):
+//	pg_ls_dir (if not aws)
+//	pg_ls_dir (if not aws)
 func (c *collector) getWALCounts() {
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
-	defer cancel()
+	// no one has perms for pg_ls_dir in AWS RDS, so don't try
+	if c.isAWS() {
+		c.result.WALCount = -1
+		c.result.WALReadyCount = -1
+		return
+	}
 
 	q1 := `SELECT pg_ls_dir FROM pg_ls_dir('pg_xlog') WHERE pg_ls_dir ~ '^[0-9A-F]{24}$'`
 	q2 := `SELECT COUNT(*) FROM pg_ls_dir('pg_xlog/archive_status') WHERE pg_ls_dir ~ '^[0-9A-F]{24}.ready$'`
-
 	if c.version >= 100000 {
 		q1 = strings.Replace(q1, "pg_xlog", "pg_wal", -1)
 		q2 = strings.Replace(q2, "pg_xlog", "pg_wal", -1)
 	}
 
+	c.getWALCountsActual(q1, q2)
+}
+
+// getWALCountsActual actually executes the given queries to get the WAL file
+// and archive ready counts.
+func (c *collector) getWALCountsActual(q1, q2 string) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
 	// see postgres source include/access/xlog_internal.h
-	const walSegmentSize = 16 * 1024 * 1024 // TODO: use "wal_segment_size" setting
-	const xLogSegmentsPerXLogID = 0x100000000 / walSegmentSize
+	walSegmentSize := uint64(c.getWALSegmentSize())
+	xLogSegmentsPerXLogID := 0x100000000 / walSegmentSize
 
 	// go through all the WAL filenames (ignore errors, need superuser)
 	c.result.WALCount = -1
@@ -1640,9 +1712,12 @@ func (c *collector) getWALCounts() {
 		}
 	}
 
-	// count the number of WAL files that are ready for archiving
-	if err := c.db.QueryRowContext(ctx, q2).Scan(&c.result.WALReadyCount); err != nil {
-		c.result.WALReadyCount = -1 // ignore errors, need superuser
+	// count the number of WAL files that are ready for archiving, if we have
+	// been given a query
+	c.result.WALReadyCount = -1
+	if q2 != "" {
+		_ = c.db.QueryRowContext(ctx, q2).Scan(&c.result.WALReadyCount)
+		// ignore errors, needs superuser
 	}
 }
 
