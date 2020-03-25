@@ -377,10 +377,6 @@ func (c *collector) collectCluster(o CollectConfig) {
 
 	c.getLocks()
 
-	if !arrayHas(o.Omit, "statements") {
-		c.getStatements()
-	}
-
 	if !arrayHas(o.Omit, "log") && c.local {
 		c.getLogInfo()
 	}
@@ -388,7 +384,7 @@ func (c *collector) collectCluster(o CollectConfig) {
 
 // info and stats for the current database
 func (c *collector) collectDatabase(o CollectConfig) {
-	c.getCurrentDatabase()
+	currdb := c.getCurrentDatabase()
 	if !arrayHas(o.Omit, "tables") {
 		c.getTables(!o.NoSizes)
 		// partition information, added schema v1.2
@@ -412,6 +408,9 @@ func (c *collector) collectDatabase(o CollectConfig) {
 	}
 	if !arrayHas(o.Omit, "tables") && !arrayHas(o.Omit, "triggers") {
 		c.getDisabledTriggers()
+	}
+	if !arrayHas(o.Omit, "statements") {
+		c.getStatements(currdb)
 	}
 	c.getBloat()
 
@@ -1153,16 +1152,16 @@ func (c *collector) getTablespaces(fillSize bool) {
 	}
 }
 
-func (c *collector) getCurrentDatabase() {
+func (c *collector) getCurrentDatabase() (dbname string) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
 	q := `SELECT current_database()`
-	var dbname string
 	if err := c.db.QueryRowContext(ctx, q).Scan(&dbname); err != nil {
 		log.Fatalf("current_database failed: %v", err)
 	}
 	c.result.Metadata.CollectedDBs = append(c.result.Metadata.CollectedDBs, dbname)
+	return
 }
 
 func (c *collector) getTables(fillSize bool) {
@@ -1537,7 +1536,25 @@ func (c *collector) getDisabledTriggers() {
 	}
 }
 
-func (c *collector) getStatements() {
+func (c *collector) getStatements(currdb string) {
+	// Even if PSS is installed only in one database, querying it gives queries
+	// from across all databases. Fetching this information once is enough.
+	if len(c.result.Statements) > 0 {
+		return
+	}
+
+	// Try to fetch only if PSS extension is installed.
+	found := false
+	for _, e := range c.result.Extensions {
+		if e.Name == "pg_stat_statements" && e.DBName == currdb {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
