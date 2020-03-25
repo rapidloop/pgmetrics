@@ -1848,11 +1848,7 @@ SELECT DISTINCT blocked_locks.pid AS blocked_pid, blocking_locks.pid AS blocking
 		if err := rows.Scan(&pid, &blocker); err != nil {
 			log.Fatalf("pg_locks query failed: %v", err)
 		}
-		if _, ok := c.result.BlockingPIDs[pid]; ok {
-			c.result.BlockingPIDs[pid] = append(c.result.BlockingPIDs[pid], blocker)
-		} else {
-			c.result.BlockingPIDs[pid] = []int{blocker}
-		}
+		c.result.BlockingPIDs[pid] = append(c.result.BlockingPIDs[pid], blocker)
 	}
 	if err := rows.Err(); err != nil {
 		log.Fatalf("pg_locks query failed: %v", err)
