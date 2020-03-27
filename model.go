@@ -206,6 +206,7 @@ type Metadata struct {
 	At           int64    `json:"at"`            // time when this report was started
 	CollectedDBs []string `json:"collected_dbs"` // names of dbs we collected db-level stats from
 	Local        bool     `json:"local"`         // was connected to a local postgres server?
+	UserAgent    string   `json:"user_agent"`    // "pgmetrics/1.8.1"
 }
 
 type SystemMetrics struct {

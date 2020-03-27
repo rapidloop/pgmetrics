@@ -393,6 +393,12 @@ func main() {
 		f.Close()
 	} else {
 		result = collector.Collect(o.CollectConfig, args)
+		// add the user agent
+		if len(version) == 0 {
+			result.Metadata.UserAgent = "pgmetrics/devel"
+		} else {
+			result.Metadata.UserAgent = "pgmetrics/" + version
+		}
 	}
 
 	// process it
