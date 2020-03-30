@@ -660,6 +660,12 @@ func (c *collector) getReplicationv9() {
 }
 
 func (c *collector) getWalReceiverv96() {
+	// skip if Aurora, because the function errors out with:
+	// "Function pg_stat_get_wal_receiver() is currently not supported in Aurora"
+	if c.isAWSAurora() {
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -701,6 +707,9 @@ func (c *collector) getAdminFuncv9() {
 			COALESCE(pg_last_xlog_receive_location()::text, ''),
 			COALESCE(pg_last_xlog_replay_location()::text, ''),
 			COALESCE(EXTRACT(EPOCH FROM pg_last_xact_replay_timestamp())::bigint, 0)`
+	if c.isAWSAurora() {
+		q = `SELECT pg_is_in_recovery(), '', '', 0`
+	}
 	if err := c.db.QueryRowContext(ctx, q).Scan(&c.result.IsInRecovery,
 		&c.result.LastWALReceiveLSN, &c.result.LastWALReplayLSN,
 		&c.result.LastXActReplayTimestamp); err != nil {
@@ -709,12 +718,14 @@ func (c *collector) getAdminFuncv9() {
 	}
 
 	if c.result.IsInRecovery {
-		qr := `SELECT pg_is_xlog_replay_paused()`
-		if err := c.db.QueryRowContext(ctx, qr).Scan(&c.result.IsWalReplayPaused); err != nil {
-			log.Fatalf("pg_is_xlog_replay_paused() failed: %v", err)
+		if !c.isAWSAurora() {
+			qr := `SELECT pg_is_xlog_replay_paused()`
+			if err := c.db.QueryRowContext(ctx, qr).Scan(&c.result.IsWalReplayPaused); err != nil {
+				log.Fatalf("pg_is_xlog_replay_paused() failed: %v", err)
+			}
 		}
 	} else {
-		if c.version >= 90600 {
+		if c.version >= 90600 && !c.isAWSAurora() { // don't attempt on Aurora
 			qx := `SELECT pg_current_xlog_flush_location(),
 					pg_current_xlog_insert_location(), pg_current_xlog_location()`
 			if err := c.db.QueryRowContext(ctx, qx).Scan(&c.result.WALFlushLSN,
@@ -734,6 +745,9 @@ func (c *collector) getAdminFuncv10() {
 			COALESCE(pg_last_wal_receive_lsn()::text, ''),
 			COALESCE(pg_last_wal_replay_lsn()::text, ''),
 			COALESCE(EXTRACT(EPOCH FROM pg_last_xact_replay_timestamp())::bigint, 0)`
+	if c.isAWSAurora() {
+		q = `SELECT pg_is_in_recovery(), '', '', 0`
+	}
 	if err := c.db.QueryRowContext(ctx, q).Scan(&c.result.IsInRecovery,
 		&c.result.LastWALReceiveLSN, &c.result.LastWALReplayLSN,
 		&c.result.LastXActReplayTimestamp); err != nil {
@@ -742,16 +756,20 @@ func (c *collector) getAdminFuncv10() {
 	}
 
 	if c.result.IsInRecovery {
-		qr := `SELECT pg_is_wal_replay_paused()`
-		if err := c.db.QueryRowContext(ctx, qr).Scan(&c.result.IsWalReplayPaused); err != nil {
-			log.Fatalf("pg_is_wal_replay_paused() failed: %v", err)
+		if !c.isAWSAurora() {
+			qr := `SELECT pg_is_wal_replay_paused()`
+			if err := c.db.QueryRowContext(ctx, qr).Scan(&c.result.IsWalReplayPaused); err != nil {
+				log.Fatalf("pg_is_wal_replay_paused() failed: %v", err)
+			}
 		}
 	} else {
-		qx := `SELECT pg_current_wal_flush_lsn(),
+		if (c.isAWSAurora() && c.setting("wal_level") == "logical") || !c.isAWSAurora() {
+			qx := `SELECT pg_current_wal_flush_lsn(),
 				pg_current_wal_insert_lsn(), pg_current_wal_lsn()`
-		if err := c.db.QueryRowContext(ctx, qx).Scan(&c.result.WALFlushLSN,
-			&c.result.WALInsertLSN, &c.result.WALLSN); err != nil {
-			log.Fatalf("error querying wal location functions: %v", err)
+			if err := c.db.QueryRowContext(ctx, qx).Scan(&c.result.WALFlushLSN,
+				&c.result.WALInsertLSN, &c.result.WALLSN); err != nil {
+				log.Fatalf("error querying wal location functions: %v", err)
+			}
 		}
 	}
 }
@@ -1636,6 +1654,11 @@ func (c *collector) getWALSegmentSize() (out int) {
 
 func (c *collector) isAWS() bool {
 	return len(c.setting("rds.extensions")) > 0
+}
+
+func (c *collector) isAWSAurora() bool {
+	s := c.setting("rds.extensions")
+	return strings.Contains(s, "aurora_stat_utils") || strings.Contains(s, "apg_plan_mgmt")
 }
 
 // getWALCountsv12 gets the WAL file and archive ready counts using the
