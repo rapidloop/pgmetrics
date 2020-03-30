@@ -79,6 +79,7 @@ Connection options:
   -p, --port=PORT              database server port (default: %d)
   -U, --username=USERNAME      database user name (default: "%s")
   -w, --no-password            never prompt for password
+      --role=ROLE              do SET ROLE before collection
 
 For more information, visit <https://pgmetrics.io>.
 `
@@ -216,6 +217,7 @@ func (o *options) parse() (args []string) {
 	s.Uint16VarLong(&o.CollectConfig.Port, "port", 'p', "")
 	s.StringVarLong(&o.CollectConfig.User, "username", 'U', "")
 	s.BoolVarLong(&o.passNone, "no-password", 'w', "")
+	s.StringVarLong(&o.CollectConfig.Role, "role", 0, "")
 
 	// parse
 	s.Parse(os.Args)

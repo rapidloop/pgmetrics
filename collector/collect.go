@@ -50,6 +50,12 @@ func makeKV(k, v string) string {
 	return fmt.Sprintf("%s=%s ", k, v2)
 }
 
+var rxIdent = regexp.MustCompile(`^[A-Za-z\200-\377_][A-Za-z\200-\377_0-9\$]*$`)
+
+func isValidIdent(s string) bool {
+	return rxIdent.MatchString(s)
+}
+
 // CollectConfig is a bunch of options passed to the Collect() function to
 // specify which metrics to collect and how.
 type CollectConfig struct {
@@ -75,6 +81,7 @@ type CollectConfig struct {
 	Port     uint16
 	User     string
 	Password string
+	Role     string
 }
 
 // DefaultCollectConfig returns a CollectConfig initialized with default values.
@@ -207,6 +214,19 @@ func collectFromDB(connstr string, c *collector, o CollectConfig) {
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {
 		log.Fatal(err)
+	}
+
+	// set role, if specified
+	if len(o.Role) > 0 {
+		if !isValidIdent(o.Role) {
+			log.Fatalf("bad format for role %q", o.Role)
+		}
+		t2 := time.Duration(o.TimeoutSec) * time.Second
+		ctx2, cancel2 := context.WithTimeout(context.Background(), t2)
+		defer cancel2()
+		if _, err := db.ExecContext(ctx2, "SET ROLE "+o.Role); err != nil {
+			log.Fatalf("failed to set role %q: %v", o.Role, err)
+		}
 	}
 
 	// collect
