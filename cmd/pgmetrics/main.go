@@ -64,7 +64,7 @@ Collection options:
                                    command-line args (use with Heroku)
       --log-file               location of PostgreSQL log file
       --log-span=MINS          examine the last MINS minutes of logs (default: 5)
-      --aws-rds-dbid           AWS RDS database identifier
+      --aws-rds-dbid           AWS RDS/Aurora database instance identifier
 
 Output options:
   -f, --format=FORMAT          output format; "human", "json" or "csv" (default: "human")
