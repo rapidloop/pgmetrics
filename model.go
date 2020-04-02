@@ -18,7 +18,7 @@ package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
-//    1.8 - AWS RDS metrics and Enhanced Monitoring metrics
+//    1.8 - AWS RDS/EnhancedMonitoring metrics, index defn, user agent
 //    1.7 - query execution plans, autovacuum, deadlocks, table acl
 //    1.6 - added highest WAL segment number
 //    1.5 - add PID to replication_outgoing entries
@@ -372,6 +372,8 @@ type Index struct {
 	RelNAtts       int    `json:"relnatts"`
 	AMName         string `json:"amname"`
 	TablespaceName string `json:"tablespace_name"`
+	// following fields present only in schema 1.8 and later
+	Definition string `json:"def"`
 }
 
 type Sequence struct {

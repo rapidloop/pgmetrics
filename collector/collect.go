@@ -1290,7 +1290,7 @@ func (c *collector) getIndexes(fillSize bool) {
 			current_database(), S.idx_scan, S.idx_tup_read, S.idx_tup_fetch,
 			pg_stat_get_blocks_fetched(S.indexrelid) - pg_stat_get_blocks_hit(S.indexrelid) AS idx_blks_read,
 			pg_stat_get_blocks_hit(S.indexrelid) AS idx_blks_hit,
-			C.relnatts, AM.amname, C.reltablespace
+			C.relnatts, AM.amname, C.reltablespace, pg_get_indexdef(S.indexrelid)
 		FROM pg_stat_user_indexes AS S
 			JOIN pg_class AS C
 			ON S.indexrelid = C.oid
@@ -1310,7 +1310,8 @@ func (c *collector) getIndexes(fillSize bool) {
 		if err := rows.Scan(&idx.TableOID, &idx.OID, &idx.SchemaName,
 			&idx.TableName, &idx.Name, &idx.DBName, &idx.IdxScan,
 			&idx.IdxTupRead, &idx.IdxTupFetch, &idx.IdxBlksRead,
-			&idx.IdxBlksHit, &idx.RelNAtts, &idx.AMName, &tblspcOID); err != nil {
+			&idx.IdxBlksHit, &idx.RelNAtts, &idx.AMName, &tblspcOID,
+			&idx.Definition); err != nil {
 			log.Fatalf("pg_stat_user_indexes query failed: %v", err)
 		}
 		idx.Size = -1  // will be filled in later if asked for
