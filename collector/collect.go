@@ -348,6 +348,10 @@ func (c *collector) collectCluster(o CollectConfig) {
 		c.getActivityv93()
 	}
 
+	if c.version >= 100000 {
+		c.getBETypeCountsv10()
+	}
+
 	if c.version >= 90400 {
 		c.getWALArchiver()
 	}
@@ -1081,6 +1085,35 @@ func (c *collector) getActivityv93() {
 	}
 	if err := rows.Err(); err != nil {
 		log.Fatalf("pg_stat_activity query failed: %v", err)
+	}
+}
+
+func (c *collector) getBETypeCountsv10() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT backend_type, count(*) FROM pg_stat_activity GROUP BY backend_type`
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		log.Fatalf("pg_stat_activity query failed: %v", err)
+	}
+	defer rows.Close()
+
+	m := make(map[string]int)
+	for rows.Next() {
+		var bt string
+		var count int
+		if err := rows.Scan(&bt, &count); err != nil {
+			log.Fatalf("pg_stat_activity query failed: %v", err)
+		}
+		m[bt] = count
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_stat_activity query failed: %v", err)
+	}
+
+	if len(m) > 0 {
+		c.result.BackendTypeCounts = m
 	}
 }
 

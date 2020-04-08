@@ -18,7 +18,8 @@ package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
-//    1.8 - AWS RDS/EnhancedMonitoring metrics, index defn, user agent
+//    1.8 - AWS RDS/EnhancedMonitoring metrics, index defn,
+//				backend type counts, user agent
 //    1.7 - query execution plans, autovacuum, deadlocks, table acl
 //    1.6 - added highest WAL segment number
 //    1.5 - add PID to replication_outgoing entries
@@ -140,6 +141,9 @@ type Model struct {
 
 	// metrics from AWS RDS
 	RDS *RDS `json:"rds,omitempty"`
+
+	// the types of running backends and their counts
+	BackendTypeCounts map[string]int `json:"betypecounts,omitempty"`
 }
 
 // DatabaseByOID iterates over the databases in the model and returns the reference
