@@ -123,8 +123,10 @@ func (c *collector) getMemory() {
 	c.result.System.MemFree = memInfo["MemFree:"]
 	c.result.System.MemBuffers = memInfo["Buffers:"]
 	c.result.System.MemCached = memInfo["Cached:"]
+	c.result.System.MemSlab = memInfo["Slab:"]
 	c.result.System.MemUsed = memInfo["MemTotal:"] - c.result.System.MemFree -
-		c.result.System.MemBuffers - c.result.System.MemCached
+		c.result.System.MemBuffers - c.result.System.MemCached -
+		c.result.System.MemSlab
 
 	// Swap
 	if val, ok := memInfo["SwapTotal:"]; ok {

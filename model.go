@@ -19,7 +19,7 @@ package pgmetrics
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
 //    1.8 - AWS RDS/EnhancedMonitoring metrics, index defn,
-//				backend type counts, user agent
+//				backend type counts, slab memory (linux), user agent
 //    1.7 - query execution plans, autovacuum, deadlocks, table acl
 //    1.6 - added highest WAL segment number
 //    1.5 - add PID to replication_outgoing entries
@@ -224,6 +224,8 @@ type SystemMetrics struct {
 	SwapUsed   int64   `json:"swapused"`            // used swap memory in bytes, 0 if no swap
 	SwapFree   int64   `json:"swapfree"`            // free swap memory in bytes, 0 if no swap
 	Hostname   string  `json:"hostname"`            // hostname from the OS
+	// following fields present only in schema 1.8 and later
+	MemSlab int64 `json:"memslab"` // RAM used for slab in bytes
 }
 
 type Backend struct {
