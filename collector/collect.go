@@ -20,6 +20,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math"
 	"os"
@@ -73,6 +74,7 @@ type CollectConfig struct {
 	Omit            []string
 	OnlyListedDBs   bool
 	LogFile         string
+	LogDir          string
 	LogSpan         uint
 	RDSDBIdentifier string
 
@@ -2393,42 +2395,69 @@ func fileExists(f string) bool {
 	return false
 }
 
+func getRecentFile(d string) (f string) {
+	files, err := ioutil.ReadDir(d)
+	if err != nil {
+		return
+	}
+	var max time.Time
+	var fname string
+	for _, finfo := range files {
+		if t := finfo.ModTime(); t.After(max) {
+			max = t
+			fname = finfo.Name()
+		}
+	}
+	if len(fname) > 0 {
+		f = filepath.Join(d, fname)
+	}
+	return
+}
+
 func (c *collector) collectLogs(o CollectConfig) {
 	// try to guess the log file location:
-	//  1. use the user-supplied filename
-	//	2. if pg_current_logfile is available, try "$PGDATA/" + that
-	//	3. /var/log/postgresql/postgresql-{MAJOR_VERSION}-main.log
 	var logfile string
+
+	// 1. use the user-supplied filename (--log-file)
 	if len(o.LogFile) > 0 {
 		if !fileExists(o.LogFile) {
 			log.Printf("warning: failed to locate/read specified log file %s", o.LogFile)
 			return
 		}
 		logfile = o.LogFile
-	} else {
-		if len(c.curlogfile) > 0 {
-			if f := filepath.Join(c.dataDir, c.curlogfile); fileExists(f) {
-				logfile = f
-			}
-		}
-		var mv string
-		if len(logfile) == 0 {
-			if c.version >= 100000 {
-				mv = strconv.Itoa(c.version / 10000)
-			} else {
-				mv = fmt.Sprintf("%d.%d", c.version/10000, (c.version/100)%100)
-			}
-			if f := fmt.Sprintf("/var/log/postgresql/postgresql-%s-main.log", mv); fileExists(f) {
-				logfile = f
-			}
-		}
-		if len(logfile) == 0 {
-			log.Print("warning: failed to guess log file location/access denied, specify explicitly with --log-file")
+	}
+
+	// 2. use the recent most file from the user-supplied dirname (--log-dir)
+	if len(logfile) == 0 && len(o.LogDir) > 0 {
+		if f := getRecentFile(o.LogDir); len(f) == 0 {
+			log.Printf("warning: failed to locate any files in %s", o.LogDir)
 			return
+		} else {
+			logfile = f
 		}
 	}
 
-	//log.Printf("found log file location %s, using span %d", logfile, c.logSpan)
+	// 3. if pg_current_logfile is available, try "$PGDATA/" + that
+	if len(logfile) == 0 && len(c.curlogfile) > 0 {
+		if f := filepath.Join(c.dataDir, c.curlogfile); fileExists(f) {
+			logfile = f
+		}
+	}
+
+	// 4. use the recent most file from /var/log/postgresql
+	if len(logfile) == 0 {
+		if f := getRecentFile("/var/log/postgresql"); len(f) > 0 {
+			logfile = f
+		}
+	}
+
+	// no log file found, warn the user
+	if len(logfile) == 0 {
+		log.Print("warning: failed to guess log file location/access denied, specify explicitly with --log-file or --log-dir")
+		return
+	}
+
+	//log.Printf("debug: found log file location %s, using span %d", logfile, c.logSpan)
 	c.readLog(logfile)
 }
 

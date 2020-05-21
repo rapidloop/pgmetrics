@@ -63,6 +63,8 @@ Collection options:
       --only-listed            collect info only about the databases listed as
                                    command-line args (use with Heroku)
       --log-file               location of PostgreSQL log file
+      --log-dir                use the last modified file from this directory
+                                   as the PostgreSQL log file
       --log-span=MINS          examine the last MINS minutes of logs (default: 5)
       --aws-rds-dbid           AWS RDS/Aurora database instance identifier
 
@@ -205,6 +207,7 @@ func (o *options) parse() (args []string) {
 	s.UintVarLong(&o.CollectConfig.StmtsLimit, "statements-limit", 0, "")
 	s.BoolVarLong(&o.CollectConfig.OnlyListedDBs, "only-listed", 0, "").SetFlag()
 	s.StringVarLong(&o.CollectConfig.LogFile, "log-file", 0, "")
+	s.StringVarLong(&o.CollectConfig.LogDir, "log-dir", 0, "")
 	s.UintVarLong(&o.CollectConfig.LogSpan, "log-span", 0, "")
 	s.StringVarLong(&o.CollectConfig.RDSDBIdentifier, "aws-rds-dbid", 0, "")
 	// output
