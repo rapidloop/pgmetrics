@@ -77,6 +77,7 @@ type CollectConfig struct {
 	LogDir          string
 	LogSpan         uint
 	RDSDBIdentifier string
+	AllDBs          bool
 
 	// connection
 	Host     string
@@ -179,6 +180,11 @@ func Collect(o CollectConfig, dbnames []string) *pgmetrics.Model {
 		connstr += makeKV("statement_timeout", strconv.Itoa(int(o.TimeoutSec)*1000))
 	}
 
+	// if "all DBs" was specified, collect the names of databases first
+	if o.AllDBs {
+		dbnames = getDBNames(connstr, o)
+	}
+
 	// collect from 1 or more DBs
 	c := &collector{
 		dbnames: dbnames,
@@ -202,13 +208,12 @@ func Collect(o CollectConfig, dbnames []string) *pgmetrics.Model {
 	return &c.result
 }
 
-func collectFromDB(connstr string, c *collector, o CollectConfig) {
+func getConn(connstr string, o CollectConfig) *sql.DB {
 	// connect
 	db, err := sql.Open("postgres", connstr)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
 
 	// ping
 	t := time.Duration(o.TimeoutSec) * time.Second
@@ -231,10 +236,47 @@ func collectFromDB(connstr string, c *collector, o CollectConfig) {
 		}
 	}
 
-	// collect
+	// ensure only 1 conn
 	db.SetMaxIdleConns(1)
 	db.SetMaxOpenConns(1)
+
+	return db
+}
+
+func collectFromDB(connstr string, c *collector, o CollectConfig) {
+	db := getConn(connstr, o)
 	c.collect(db, o)
+	db.Close()
+}
+
+func getDBNames(connstr string, o CollectConfig) (dbnames []string) {
+	db := getConn(connstr, o)
+	defer db.Close()
+
+	timeout := time.Duration(o.TimeoutSec) * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	q := `SELECT datname
+		    FROM pg_database
+		   WHERE (NOT datistemplate) AND (datname <> 'postgres')`
+	rows, err := db.QueryContext(ctx, q)
+	if err != nil {
+		log.Fatalf("pg_database query failed: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			log.Fatalf("pg_database query failed: %v", err)
+		}
+		dbnames = append(dbnames, name)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_database query failed: %v", err)
+	}
+	return
 }
 
 type collector struct {

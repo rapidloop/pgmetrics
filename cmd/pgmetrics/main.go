@@ -60,8 +60,9 @@ Collection options:
                                    queries (default: 500)
       --statements-limit=LIMIT collect only utmost LIMIT number of row from
                                    pg_stat_statements (default: 100)
-      --only-listed            collect info only about the databases listed as
+      --only-listed            collect info only from the databases listed as
                                    command-line args (use with Heroku)
+      --all-dbs                collect info from all user databases
       --log-file               location of PostgreSQL log file
       --log-dir                use the last modified file from this directory
                                    as the PostgreSQL log file
@@ -206,6 +207,7 @@ func (o *options) parse() (args []string) {
 	s.UintVarLong(&o.CollectConfig.SQLLength, "sql-length", 0, "")
 	s.UintVarLong(&o.CollectConfig.StmtsLimit, "statements-limit", 0, "")
 	s.BoolVarLong(&o.CollectConfig.OnlyListedDBs, "only-listed", 0, "").SetFlag()
+	s.BoolVarLong(&o.CollectConfig.AllDBs, "all-dbs", 0, "").SetFlag()
 	s.StringVarLong(&o.CollectConfig.LogFile, "log-file", 0, "")
 	s.StringVarLong(&o.CollectConfig.LogDir, "log-dir", 0, "")
 	s.UintVarLong(&o.CollectConfig.LogSpan, "log-span", 0, "")
