@@ -297,6 +297,7 @@ type collector struct {
 	curlogfile   string
 	logSpan      uint
 	currLog      logEntry
+	rxPrefix     *regexp.Regexp
 }
 
 func (c *collector) collect(db *sql.DB, o CollectConfig) {
@@ -2457,8 +2458,13 @@ func getRecentFile(d string) (f string) {
 }
 
 func (c *collector) collectLogs(o CollectConfig) {
-	// try to guess the log file location:
-	var logfile string
+	// need log_file_prefix first
+	if !c.getPrefix() {
+		return // already logged
+	}
+
+	// try to guess the log file(s) location:
+	var logfiles []string
 
 	// 1. use the user-supplied filename (--log-file)
 	if len(o.LogFile) > 0 {
@@ -2466,41 +2472,65 @@ func (c *collector) collectLogs(o CollectConfig) {
 			log.Printf("warning: failed to locate/read specified log file %s", o.LogFile)
 			return
 		}
-		logfile = o.LogFile
+		logfiles = []string{o.LogFile}
 	}
 
-	// 2. use the recent most file from the user-supplied dirname (--log-dir)
-	if len(logfile) == 0 && len(o.LogDir) > 0 {
-		if f := getRecentFile(o.LogDir); len(f) == 0 {
-			log.Printf("warning: failed to locate any files in %s", o.LogDir)
+	// 2. use the files from the user-supplied dirname (--log-dir)
+	if len(logfiles) == 0 && len(o.LogDir) > 0 {
+		files, err := ioutil.ReadDir(o.LogDir)
+		if err != nil {
+			log.Printf("warning: failed to read specified log dir: %v", err)
 			return
-		} else {
-			logfile = f
+		}
+		for _, f := range files {
+			if n := f.Name(); !strings.HasSuffix(n, ".gz") && !strings.HasSuffix(n, ".bz2") {
+				// if file does not end in .gz or .bz2, we'll try to read it
+				logfiles = append(logfiles, filepath.Join(o.LogDir, n))
+			}
 		}
 	}
 
 	// 3. if pg_current_logfile is available, try "$PGDATA/" + that
-	if len(logfile) == 0 && len(c.curlogfile) > 0 {
+	if len(logfiles) == 0 && len(c.curlogfile) > 0 {
 		if f := filepath.Join(c.dataDir, c.curlogfile); fileExists(f) {
-			logfile = f
+			logfiles = []string{f}
 		}
 	}
 
 	// 4. use the recent most file from /var/log/postgresql
-	if len(logfile) == 0 {
+	if len(logfiles) == 0 {
 		if f := getRecentFile("/var/log/postgresql"); len(f) > 0 {
-			logfile = f
+			logfiles = []string{f}
 		}
 	}
 
 	// no log file found, warn the user
-	if len(logfile) == 0 {
+	if len(logfiles) == 0 {
 		log.Print("warning: failed to guess log file location/access denied, specify explicitly with --log-file or --log-dir")
 		return
 	}
 
-	//log.Printf("debug: found log file location %s, using span %d", logfile, c.logSpan)
-	c.readLog(logfile)
+	//log.Printf("debug: found log files %v, using span %d", logfiles, c.logSpan)
+	c.readLogs(logfiles)
+}
+
+func (c *collector) getPrefix() bool {
+	var prefix string
+	if s, ok := c.result.Settings["log_line_prefix"]; ok {
+		prefix = s.Setting
+	} else {
+		log.Print("failed to get log_line_prefix setting, cannot read log file")
+		return false
+	}
+
+	rxPrefix, err := compilePrefix(prefix)
+	if err != nil {
+		log.Print(err)
+		return false
+	}
+
+	c.rxPrefix = rxPrefix
+	return true
 }
 
 func collectFromRDS(dbid string, result *pgmetrics.Model) {

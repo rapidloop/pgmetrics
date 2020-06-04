@@ -24,28 +24,15 @@ var (
 	rxAVElapsed = regexp.MustCompile(`, elapsed: ([0-9.]+) s`)
 )
 
-func (c *collector) readLog(filename string) {
-	var prefix string
-	if s, ok := c.result.Settings["log_line_prefix"]; ok {
-		prefix = s.Setting
-	} else {
-		log.Print("failed to get log_line_prefix setting, cannot read log file")
-		return
-	}
-
-	prefixRE, err := compilePrefix(prefix)
-	if err != nil {
-		log.Print(err)
-		return
-	}
-
-	if err := c.readLogLines(filename, prefixRE); err != nil {
-		log.Print(err)
-		return
+func (c *collector) readLogs(filenames []string) {
+	for _, filename := range filenames {
+		if err := c.readLogLines(filename); err != nil {
+			log.Print(err)
+		}
 	}
 }
 
-func (c *collector) readLogLines(filename string, prefix *regexp.Regexp) error {
+func (c *collector) readLogLines(filename string) error {
 	f, err := os.Open(filename)
 	if err != nil {
 		return err
@@ -83,7 +70,7 @@ func (c *collector) readLogLines(filename string, prefix *regexp.Regexp) error {
 		if _, err := io.ReadFull(f, buf); err != nil {
 			return err
 		}
-		ts, err := firstTS(buf, prefix)
+		ts, err := firstTS(buf, c.rxPrefix)
 		if err != nil {
 			return err
 		}
@@ -114,17 +101,18 @@ func (c *collector) readLogLines(filename string, prefix *regexp.Regexp) error {
 	}
 
 	count := 0
-	pos := prefix.FindIndex(bigbuf)
+	pos := c.rxPrefix.FindIndex(bigbuf)
 	for len(pos) == 2 && len(bigbuf) > 0 {
 		// match again for submatches, can't do this in one go :-(
-		match := prefix.FindSubmatch(bigbuf[pos[0]:])
-		t, user, db, err := getMatchData(match, prefix)
+		// TODO: no longer the case, use FindSubmatchIndex
+		match := c.rxPrefix.FindSubmatch(bigbuf[pos[0]:])
+		t, user, db, err := getMatchData(match, c.rxPrefix)
 		if err != nil {
 			return nil
 		}
 		var line string
 		// seek to start of next line
-		pos2 := prefix.FindIndex(bigbuf[pos[1]:])
+		pos2 := c.rxPrefix.FindIndex(bigbuf[pos[1]:])
 		if pos2 == nil {
 			line = string(bigbuf[pos[1]:])
 		} else {
