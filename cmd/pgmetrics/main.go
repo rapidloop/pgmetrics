@@ -64,8 +64,7 @@ Collection options:
                                    command-line args (use with Heroku)
       --all-dbs                collect info from all user databases
       --log-file               location of PostgreSQL log file
-      --log-dir                use the last modified file from this directory
-                                   as the PostgreSQL log file
+      --log-dir                read all the PostgreSQL log files in this directory
       --log-span=MINS          examine the last MINS minutes of logs (default: 5)
       --aws-rds-dbid           AWS RDS/Aurora database instance identifier
 
