@@ -1146,12 +1146,12 @@ func (c *collector) getBETypeCountsv10() {
 
 	m := make(map[string]int)
 	for rows.Next() {
-		var bt string
+		var bt sql.NullString
 		var count int
 		if err := rows.Scan(&bt, &count); err != nil {
 			log.Fatalf("pg_stat_activity query failed: %v", err)
 		}
-		m[bt] = count
+		m[bt.String] = count
 	}
 	if err := rows.Err(); err != nil {
 		log.Fatalf("pg_stat_activity query failed: %v", err)
