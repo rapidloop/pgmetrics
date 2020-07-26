@@ -61,8 +61,9 @@ func isValidIdent(s string) bool {
 // specify which metrics to collect and how.
 type CollectConfig struct {
 	// general
-	TimeoutSec uint
-	NoSizes    bool
+	TimeoutSec          uint
+	LockTimeoutMillisec uint
+	NoSizes             bool
 
 	// collection
 	Schema          string
@@ -92,7 +93,8 @@ type CollectConfig struct {
 func DefaultCollectConfig() CollectConfig {
 	cc := CollectConfig{
 		// ------------------ general
-		TimeoutSec: 5,
+		TimeoutSec:          5,
+		LockTimeoutMillisec: 50,
 		//NoSizes: false,
 
 		// ------------------ collection
@@ -176,7 +178,7 @@ func Collect(o CollectConfig, dbnames []string) *pgmetrics.Model {
 
 	// set timeouts (but not for pgbouncer, it does not like them)
 	if !(len(dbnames) == 1 && dbnames[0] == "pgbouncer") {
-		connstr += makeKV("lock_timeout", "50") // 50 msec. Just fail fast on locks.
+		connstr += makeKV("lock_timeout", strconv.Itoa(int(o.LockTimeoutMillisec)))
 		connstr += makeKV("statement_timeout", strconv.Itoa(int(o.TimeoutSec)*1000))
 	}
 

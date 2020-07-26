@@ -40,6 +40,7 @@ Usage:
 
 General options:
   -t, --timeout=SECS           individual query timeout in seconds (default: 5)
+      --lock-timeout=MILLIS    lock timeout in milliseconds (default: 50)
   -i, --input=FILE             don't connect to db, instead read and display
                                    this previously saved JSON file
   -V, --version                output version information, then exit
@@ -193,6 +194,7 @@ func (o *options) parse() (args []string) {
 	s.SetProgram("pgmetrics")
 	// general
 	s.UintVarLong(&o.CollectConfig.TimeoutSec, "timeout", 't', "")
+	s.UintVarLong(&o.CollectConfig.LockTimeoutMillisec, "lock-timeout", 0, "")
 	s.BoolVarLong(&o.CollectConfig.NoSizes, "no-sizes", 'S', "")
 	s.StringVarLong(&o.input, "input", 'i', "")
 	help := s.StringVarLong(&o.help, "help", '?', "").SetOptional()
@@ -246,6 +248,11 @@ func (o *options) parse() (args []string) {
 	}
 	if o.CollectConfig.TimeoutSec == 0 {
 		fmt.Fprintln(os.Stderr, "timeout must be greater than 0")
+		printTry()
+		os.Exit(2)
+	}
+	if o.CollectConfig.LockTimeoutMillisec == 0 {
+		fmt.Fprintln(os.Stderr, "lock-timeout must be greater than 0")
 		printTry()
 		os.Exit(2)
 	}
