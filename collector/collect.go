@@ -2483,7 +2483,7 @@ func (c *collector) collectLogs(o CollectConfig) {
 			return
 		}
 		for _, f := range files {
-			if n := f.Name(); !strings.HasSuffix(n, ".gz") && !strings.HasSuffix(n, ".bz2") {
+			if n := f.Name(); !f.IsDir() && !strings.HasSuffix(n, ".gz") && !strings.HasSuffix(n, ".bz2") {
 				// if file does not end in .gz or .bz2, we'll try to read it
 				logfiles = append(logfiles, filepath.Join(o.LogDir, n))
 			}
