@@ -51,6 +51,7 @@ func (c *collector) readLogLines(filename string) error {
 	if flen <= 0 {
 		return nil // empty file, nothing to do
 	}
+	//log.Printf("debug: file %s of length %d", filename, flen)
 
 	// a buffer for reuse
 	buf := make([]byte, 4096)
@@ -58,7 +59,9 @@ func (c *collector) readLogLines(filename string) error {
 	// seek to flen-4k
 	ofs := flen - 4096
 	for {
+		buflen := int64(4096)
 		if ofs < 0 {
+			buflen += ofs
 			ofs = 0
 		}
 		if ofs, err = f.Seek(ofs, 0); err != nil {
@@ -67,10 +70,11 @@ func (c *collector) readLogLines(filename string) error {
 		//log.Printf("debug: seeked to %d", ofs)
 
 		// read the last 4k of the file
-		if _, err := io.ReadFull(f, buf); err != nil {
+		//log.Printf("debug: reading %d bytes", len(buf[0:buflen]))
+		if _, err := io.ReadFull(f, buf[0:buflen]); err != nil {
 			return err
 		}
-		ts, err := firstTS(buf, c.rxPrefix)
+		ts, err := firstTS(buf[0:buflen], c.rxPrefix)
 		if err != nil {
 			return err
 		}
