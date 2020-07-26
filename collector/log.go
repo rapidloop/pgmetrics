@@ -27,7 +27,7 @@ var (
 func (c *collector) readLogs(filenames []string) {
 	for _, filename := range filenames {
 		if err := c.readLogLines(filename); err != nil {
-			log.Print(err)
+			log.Printf("warning: while reading log file %s: %v", filename, err)
 		}
 	}
 }
