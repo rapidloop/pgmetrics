@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,7 +18,7 @@ import (
 
 var (
 	rxLogLevel  = regexp.MustCompile(`^([A-Z]+):\s+`)
-	rxAEStart   = regexp.MustCompile(`^duration: [0-9]+\.[0-9]+ ms  plan:\n[ \t]+({[ \t]*\n)?(<explain xml.*\n)?(Query Text: ".*"\n)?(Query Text: [^"].*\n)?`)
+	rxAEStart   = regexp.MustCompile(`^duration: [0-9]+\.[0-9]+ ms  plan:\n[ \t]*({[ \t]*\n)?(<explain xml.*\n)?(Query Text: ".*"\n)?(Query Text: [^"].*\n)?`)
 	rxAESwitch1 = regexp.MustCompile(`^\s+Query Text: (.*)$`)
 	rxAESwitch2 = regexp.MustCompile(`cost=\d+.*rows=\d`)
 	rxAVStart   = regexp.MustCompile(`automatic (aggressive )?vacuum (to prevent wraparound )?of table "([^"]+)": index`)
@@ -26,6 +27,7 @@ var (
 
 func (c *collector) readLogs(filenames []string) {
 	for _, filename := range filenames {
+		//log.Printf("debug: reading %s, csv=%v", filename, c.csvlog)
 		if err := c.readLogLines(filename); err != nil {
 			log.Printf("warning: while reading log file %s: %v", filename, err)
 		}
@@ -33,6 +35,13 @@ func (c *collector) readLogs(filenames []string) {
 }
 
 func (c *collector) readLogLines(filename string) error {
+	if c.csvlog {
+		return c.readLogLinesCSV(filename)
+	}
+	return c.readLogLinesText(filename)
+}
+
+func (c *collector) readLogLinesText(filename string) error {
 	f, err := os.Open(filename)
 	if err != nil {
 		return err
@@ -145,6 +154,70 @@ func (c *collector) readLogLines(filename string) error {
 		c.processLogEntry()
 	}
 	return nil
+}
+
+//  1. time stamp with milliseconds
+//  2. user name
+//  3. database name
+//  4. process ID
+//  5. client host:port number
+//  6. session ID
+//  7. per-session line number
+//  8. command tag
+//  9. session start time
+// 10. virtual transaction ID
+// 11. regular transaction ID
+// 12. error severity
+// 13. SQLSTATE code
+// 14. error message
+// 15. error message detail
+// 16. hint
+// 17. internal query that led to the error (if any)
+// 18. character count of the error position therein
+// 19. error context
+// 20. user query that led to the error (if any and enabled by log_min_error_statement)
+// 21. character count of the error position therein
+// 22. location of the error in the PostgreSQL source code (if log_error_verbosity is set to verbose)
+// 23. application name
+
+func (c *collector) readLogLinesCSV(filename string) error {
+	f, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	window := time.Duration(c.logSpan) * time.Minute
+	start := time.Now().Add(-window)
+
+	r := csv.NewReader(f)
+	r.FieldsPerRecord = 23
+	r.ReuseRecord = true
+	for {
+		record, err := r.Read()
+		if err != nil {
+			if err == io.EOF || errors.Is(err, csv.ErrFieldCount) {
+				// ignore file if ErrFieldCount, probably not a csv file
+				return nil
+			}
+			return err
+		}
+		t, err := time.Parse("2006-01-02 15:04:05.999 MST", record[0])
+		if err != nil || t.Before(start) {
+			continue
+		}
+		c.currLog = logEntry{
+			t:     t,
+			user:  record[1],
+			db:    record[2],
+			level: record[11],
+			line:  record[13],
+		}
+		if d := record[14]; len(d) > 0 {
+			c.currLog.extra = []logEntryExtra{{level: "DETAIL", line: d}}
+		}
+		c.processLogEntry()
+	}
 }
 
 var severities = []string{"DEBUG", "LOG", "INFO", "NOTICE", "WARNING", "ERROR", "FATAL", "PANIC"}

@@ -297,6 +297,7 @@ type collector struct {
 	stmtsLimit   uint
 	dbnames      []string
 	curlogfile   string
+	csvlog       bool
 	logSpan      uint
 	currLog      logEntry
 	rxPrefix     *regexp.Regexp
@@ -2418,6 +2419,10 @@ func (c *collector) getPBDatabases() {
 // log file collection
 
 func (c *collector) getLogInfo() {
+	// csv if log_destination has 'csvlog' and logging_collector is 'on'
+	c.csvlog = strings.Contains(c.setting("log_destination"), "csvlog") &&
+		c.setting("logging_collector") == "on"
+
 	// pg_current_logfile is only available in v10 and above
 	if c.version < 100000 {
 		return
@@ -2426,8 +2431,14 @@ func (c *collector) getLogInfo() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	q := `SELECT COALESCE(pg_current_logfile(),'')`
-	_ = c.db.QueryRowContext(ctx, q).Scan(&c.curlogfile)
+	// format is 'csvlog' or 'stderr'
+	var f = "stderr"
+	if c.csvlog {
+		f = "csvlog"
+	}
+
+	q := `SELECT COALESCE(pg_current_logfile($1),'')`
+	_ = c.db.QueryRowContext(ctx, q, f).Scan(&c.curlogfile)
 	// ignore any errors.
 }
 
@@ -2492,9 +2503,13 @@ func (c *collector) collectLogs(o CollectConfig) {
 		}
 	}
 
-	// 3. if pg_current_logfile is available, try "$PGDATA/" + that
+	// 3. if pg_current_logfile is available, try that
 	if len(logfiles) == 0 && len(c.curlogfile) > 0 {
-		if f := filepath.Join(c.dataDir, c.curlogfile); fileExists(f) {
+		if fileExists(c.curlogfile) {
+			// c.curlogfile can be an absolute path..
+			logfiles = []string{c.curlogfile}
+		} else if f := filepath.Join(c.dataDir, c.curlogfile); fileExists(f) {
+			// ..or relative to $PGDATA
 			logfiles = []string{f}
 		}
 	}
