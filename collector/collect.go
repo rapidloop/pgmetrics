@@ -491,6 +491,11 @@ func (c *collector) collectDatabase(o CollectConfig) {
 		c.getPublications()
 		c.getSubscriptions()
 	}
+
+	// citus, added in schema 1.9
+	if !arrayHas(o.Omit, "citus") {
+		c.getCitus(currdb, !o.NoSizes)
+	}
 }
 
 func arrayHas(arr []string, val string) bool {

@@ -18,6 +18,7 @@ package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
+//    1.9 - Citus support
 //    1.8 - AWS RDS/EnhancedMonitoring metrics, index defn,
 //				backend type counts, slab memory (linux), user agent
 //    1.7 - query execution plans, autovacuum, deadlocks, table acl
@@ -144,6 +145,11 @@ type Model struct {
 
 	// the types of running backends and their counts
 	BackendTypeCounts map[string]int `json:"betypecounts,omitempty"`
+
+	// following fields are present only in schema 1.9 and later
+
+	// citus-related information, per db
+	Citus map[string]*Citus `json:"citus,omitempty"`
 }
 
 // DatabaseByOID iterates over the databases in the model and returns the reference
@@ -664,4 +670,65 @@ type Deadlock struct {
 type RDS struct {
 	Basic    map[string]float64     `json:"basic"`              // Basic Monitoring Metrics
 	Enhanced map[string]interface{} `json:"enhanced,omitempty"` // Enhanced Monitoring
+}
+
+// Citus contains metrics collected from Citus extension.
+// Added in schema 1.9.
+type Citus struct {
+	Version        string           `json:"version"`
+	Nodes          []CitusNode      `json:"nodes"`
+	Statements     []CitusStatement `json:"statements"`
+	Backends       []CitusBackend   `json:"dist_activity"`
+	WorkerBackends []CitusBackend   `json:"worker_activity"`
+	Locks          []CitusLock      `json:"locks"`
+}
+
+// CitusNode represents a row from the pg_dist_node table. Added in schema 1.9.
+type CitusNode struct {
+	ID               int    `json:"nodeid"`
+	GroupID          int    `json:"groupid"`
+	Name             string `json:"nodename"`
+	Port             int    `json:"nodeport"`
+	Rack             string `json:"noderack"`
+	IsActive         bool   `json:"isactive"`
+	Role             string `json:"noderole"`
+	Cluster          string `json:"nodecluster"`
+	ShouldHaveShards bool   `json:"shouldhaveshards"`
+}
+
+// CitusStatement represents a row in citus_stat_statements. Added in schema 1.9.
+type CitusStatement struct {
+	QueryID      int64  `json:"queryid"`       // same as pg_stat_statements.queryid
+	UserOID      int    `json:"useroid"`       // user who ran the query
+	DBOID        int    `json:"db_oid"`        // database instance of coordinator
+	Query        string `json:"query"`         // anonymized query string
+	Executor     string `json:"executor"`      // Citus executor used: adaptive, real-time, task-tracker, router, or insert-select
+	PartitionKey string `json:"partition_key"` // value of distribution column in router-executed queries, else NULL
+	Calls        int64  `json:"calls"`         // number of times the query was run
+}
+
+// CitusBackend represents a row from citus_dist_stat_activity or from
+// citus_worker_stat_activity. Added in schema 1.9.
+type CitusBackend struct {
+	Backend                    // also include all fields from pg_stat_activity
+	QueryHostname       string `json:"query_hostname"`
+	QueryPort           int    `json:"query_port"`
+	MasterQueryHostname string `json:"master_query_hostname"`
+	MasterQueryPort     int    `json:"master_query_port"`
+	TxNumber            int64  `json:"transaction_number"`
+	TxStamp             int64  `json:"transaction_stamp"`
+}
+
+// CitusLock represents a single row from citus_lock_waits. Added in schema 1.9.
+type CitusLock struct {
+	WaitingPID       int    `json:"waiting_pid"`
+	BlockingPID      int    `json:"blocking_pid"`
+	BlockedStmt      string `json:"blocked_statement"`
+	CurrStmt         string `json:"current_statement_in_blocking_process"`
+	WaitingNodeID    int    `json:"waiting_node_id"`
+	BlockingNodeID   int    `json:"blocking_node_id"`
+	WaitingNodeName  string `json:"waiting_node_name"`
+	BlockingNodeName string `json:"blocking_node_name"`
+	WaitingNodePort  int    `json:"waiting_node_port"`
+	BlockingNodePort int    `json:"blocking_node_port"`
 }

@@ -56,7 +56,7 @@ Collection options:
       --omit=WHAT              do NOT collect the items specified as a comma-separated
                                    list of: "tables", "indexes", "sequences",
                                    "functions", "extensions", "triggers",
-                                   "statements", "log"
+                                   "statements", "log", "citus"
       --sql-length=LIMIT       collect only first LIMIT characters of all SQL
                                    queries (default: 500)
       --statements-limit=LIMIT collect only utmost LIMIT number of row from
@@ -279,7 +279,7 @@ func (o *options) parse() (args []string) {
 	for _, om := range o.CollectConfig.Omit {
 		if om != "tables" && om != "indexes" && om != "sequences" &&
 			om != "functions" && om != "extensions" && om != "triggers" &&
-			om != "statements" && om != "log" {
+			om != "statements" && om != "log" && om != "citus" {
 			fmt.Fprintf(os.Stderr, "unknown item \"%s\" in --omit option\n", om)
 			printTry()
 			os.Exit(2)
