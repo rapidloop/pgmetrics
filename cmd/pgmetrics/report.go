@@ -125,7 +125,7 @@ PostgreSQL Cluster:
 		reportReplicationSlots(fd, result, version)
 	}
 
-	reportWAL(fd, result)
+	reportWAL(fd, result, version)
 	reportBGWriter(fd, result)
 	reportBackends(fd, o.tooLongSec, result)
 	reportLocks(fd, result)
@@ -275,7 +275,7 @@ Logical Replication Slots:
 }
 
 // WAL files and archiving
-func reportWAL(fd io.Writer, result *pgmetrics.Model) {
+func reportWAL(fd io.Writer, result *pgmetrics.Model, version int) {
 
 	archiveMode := getSetting(result, "archive_mode") == "on"
 	fmt.Fprintf(fd, `
@@ -324,7 +324,11 @@ WAL Files:
 	tw1.add("min_wal_size", getSettingBytes(result, "min_wal_size", 16*1024*1024)) //getMinWalSize(result))
 	tw1.add("checkpoint_timeout", getSetting(result, "checkpoint_timeout"))
 	tw1.add("full_page_writes", getSetting(result, "full_page_writes"))
-	tw1.add("wal_keep_segments", getSetting(result, "wal_keep_segments"))
+	if version >= 130000 {
+		tw1.add("wal_keep_size", getSettingBytes(result, "wal_keep_size", 1024*1024))
+	} else {
+		tw1.add("wal_keep_segments", getSetting(result, "wal_keep_segments"))
+	}
 	tw1.write(fd, "    ")
 }
 

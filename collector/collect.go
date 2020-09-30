@@ -412,7 +412,9 @@ func (c *collector) collectCluster(o CollectConfig) {
 		c.getReplicationv9()
 	}
 
-	if c.version >= 90600 {
+	if c.version >= 130000 {
+		c.getWalReceiverv13()
+	} else if c.version >= 90600 {
 		c.getWalReceiverv96()
 	}
 
@@ -736,6 +738,47 @@ func (c *collector) getReplicationv9() {
 	}
 }
 
+func (c *collector) getWalReceiverv13() {
+	// skip if Aurora, because the function errors out with:
+	// "Function pg_stat_get_wal_receiver() is currently not supported in Aurora"
+	if c.isAWSAurora() {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT status, receive_start_lsn, receive_start_tli, written_lsn,
+			flushed_lsn, received_tli, last_msg_send_time, last_msg_receipt_time,
+			latest_end_lsn,
+			COALESCE(EXTRACT(EPOCH FROM latest_end_time)::bigint, 0),
+			COALESCE(slot_name, ''), conninfo
+		  FROM pg_stat_wal_receiver`
+	var r pgmetrics.ReplicationIn
+	var msgSend, msgRecv pq.NullTime
+	if err := c.db.QueryRowContext(ctx, q).Scan(&r.Status, &r.ReceiveStartLSN,
+		&r.ReceiveStartTLI, &r.WrittenLSN, &r.FlushedLSN, &r.ReceivedTLI,
+		&msgSend, &msgRecv, &r.LatestEndLSN, &r.LatestEndTime, &r.SlotName,
+		&r.Conninfo); err != nil {
+		if err == sql.ErrNoRows {
+			return // not an error
+		}
+		log.Printf("warning: pg_stat_wal_receiver query failed: %v", err)
+		return
+	}
+
+	if msgSend.Valid && msgRecv.Valid && msgRecv.Time.After(msgSend.Time) {
+		r.Latency = int64(msgRecv.Time.Sub(msgSend.Time)) / 1000
+	}
+	if msgSend.Valid {
+		r.LastMsgSendTime = msgSend.Time.Unix()
+	}
+	if msgRecv.Valid {
+		r.LastMsgReceiptTime = msgRecv.Time.Unix()
+	}
+	c.result.ReplicationIncoming = &r
+}
+
 func (c *collector) getWalReceiverv96() {
 	// skip if Aurora, because the function errors out with:
 	// "Function pg_stat_get_wal_receiver() is currently not supported in Aurora"
@@ -764,7 +807,7 @@ func (c *collector) getWalReceiverv96() {
 		return
 	}
 
-	if msgSend.Valid && msgRecv.Valid {
+	if msgSend.Valid && msgRecv.Valid && msgRecv.Time.After(msgSend.Time) {
 		r.Latency = int64(msgRecv.Time.Sub(msgSend.Time)) / 1000
 	}
 	if msgSend.Valid {

@@ -18,7 +18,7 @@ package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
-//    1.9 - Citus support
+//    1.9 - Postgres 13, Citus support
 //    1.8 - AWS RDS/EnhancedMonitoring metrics, index defn,
 //				backend type counts, slab memory (linux), user agent
 //    1.7 - query execution plans, autovacuum, deadlocks, table acl
@@ -482,7 +482,7 @@ type ReplicationIn struct {
 	Status             string `json:"status"`
 	ReceiveStartLSN    string `json:"receive_start_lsn"`
 	ReceiveStartTLI    int    `json:"receive_start_tli"`
-	ReceivedLSN        string `json:"received_lsn"`
+	ReceivedLSN        string `json:"received_lsn"` // empty in 13.x+
 	ReceivedTLI        int    `json:"received_tli"`
 	LastMsgSendTime    int64  `json:"last_msg_send_time"`
 	LastMsgReceiptTime int64  `json:"last_msg_receipt_time"`
@@ -491,6 +491,9 @@ type ReplicationIn struct {
 	LatestEndTime      int64  `json:"latest_end_time"`
 	SlotName           string `json:"slot_name"`
 	Conninfo           string `json:"conninfo"`
+	// following fields present only in schema 1.9 and later (13.x+)
+	WrittenLSN string `json:"written_lsn,omitempty"`
+	FlushedLSN string `json:"flushed_lsn,omitempty"`
 }
 
 type Trigger struct {
