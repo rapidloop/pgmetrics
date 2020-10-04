@@ -1591,14 +1591,18 @@ func getVersion(result *pgmetrics.Model) int {
 	return v
 }
 
-func getMaxWalSize(result *pgmetrics.Model) (string, string) {
-	var key string
-	if version := getVersion(result); version >= 90500 {
+func getMaxWalSize(result *pgmetrics.Model) (key, val string) {
+	if version := getVersion(result); version >= 100000 {
 		key = "max_wal_size"
+		val = getSettingBytes(result, key, 1024*1024)
+	} else if version >= 90500 {
+		key = "max_wal_size"
+		val = getSettingBytes(result, key, 16*1024*1024)
 	} else {
 		key = "checkpoint_segments"
+		val = getSetting(result, key)
 	}
-	return key, getSettingBytes(result, key, 16*1024*1024)
+	return
 }
 
 type aclItem struct {
