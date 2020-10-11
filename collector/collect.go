@@ -1723,6 +1723,67 @@ func (c *collector) getStatements(currdb string) {
 		return
 	}
 
+	if c.version >= 130000 {
+		c.getStatementsv13(currdb)
+	} else {
+		c.getStatementsPrev13(currdb)
+	}
+}
+
+func (c *collector) getStatementsv13(currdb string) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT userid, dbid, queryid, LEFT(COALESCE(query, ''), $1), calls,
+			total_exec_time, min_exec_time, max_exec_time, stddev_exec_time,
+			rows, shared_blks_hit, shared_blks_read, shared_blks_dirtied,
+			shared_blks_written, local_blks_hit, local_blks_read,
+			local_blks_dirtied, local_blks_written, temp_blks_read,
+			temp_blks_written, blk_read_time, blk_write_time,
+			plans, total_plan_time, min_plan_time, max_plan_time,
+			stddev_plan_time, wal_records, wal_fpi, wal_bytes::bigint
+		  FROM pg_stat_statements
+		  ORDER BY total_exec_time DESC
+		  LIMIT $2`
+	rows, err := c.db.QueryContext(ctx, q, c.sqlLength, c.stmtsLimit)
+	if err != nil {
+		log.Printf("warning: pg_stat_statements query failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	c.result.Statements = make([]pgmetrics.Statement, 0, c.stmtsLimit)
+	for rows.Next() {
+		var s pgmetrics.Statement
+		var queryID sql.NullInt64
+		if err := rows.Scan(&s.UserOID, &s.DBOID, &queryID, &s.Query,
+			&s.Calls, &s.TotalTime, &s.MinTime, &s.MaxTime, &s.StddevTime,
+			&s.Rows, &s.SharedBlksHit, &s.SharedBlksRead, &s.SharedBlksDirtied,
+			&s.SharedBlksWritten, &s.LocalBlksHit, &s.LocalBlksRead,
+			&s.LocalBlksDirtied, &s.LocalBlksWritten, &s.TempBlksRead,
+			&s.TempBlksWritten, &s.BlkReadTime, &s.BlkWriteTime, &s.Plans,
+			&s.TotalPlanTime, &s.MinPlanTime, &s.MaxPlanTime, &s.StddevPlanTime,
+			&s.WALRecords, &s.WALFPI, &s.WALBytes); err != nil {
+			log.Fatalf("pg_stat_statements scan failed: %v", err)
+		}
+		// UserName
+		if r := c.result.RoleByOID(s.UserOID); r != nil {
+			s.UserName = r.Name
+		}
+		// DBName
+		if d := c.result.DatabaseByOID(s.DBOID); d != nil {
+			s.DBName = d.Name
+		}
+		// Query ID, set to 0 if null
+		s.QueryID = queryID.Int64
+		c.result.Statements = append(c.result.Statements, s)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_stat_statements failed: %v", err)
+	}
+}
+
+func (c *collector) getStatementsPrev13(currdb string) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -1752,6 +1813,7 @@ func (c *collector) getStatements(currdb string) {
 		// If we still have errors, silently give up on querying
 		// pg_stat_statements.
 		if err != nil {
+			log.Printf("warning: pg_stat_statements query failed: %v", err)
 			return
 		}
 	}
