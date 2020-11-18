@@ -7,6 +7,8 @@ builds:
       - linux
     goarch:
       - amd64
+      - arm
+      - arm64
     flags:
       - -trimpath
     ldflags:
