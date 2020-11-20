@@ -101,12 +101,12 @@ func (ac *awsCollector) collect(dbid string, out *pgmetrics.RDS) (err error) {
 			},
 		}
 	}
-	to := time.Now().Truncate(5 * time.Minute)
+	to := time.Now()
 	from := to.Add(-1 * time.Minute)
 	input := &cloudwatch.GetMetricDataInput{
 		StartTime:         aws.Time(from),
 		EndTime:           aws.Time(to),
-		ScanBy:            aws.String("TimestampAscending"),
+		ScanBy:            aws.String("TimestampDescending"),
 		MaxDatapoints:     aws.Int64(1),
 		MetricDataQueries: queries,
 	}
