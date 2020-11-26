@@ -102,7 +102,7 @@ func (ac *awsCollector) collect(dbid string, out *pgmetrics.RDS) (err error) {
 		}
 	}
 	to := time.Now()
-	from := to.Add(-1 * time.Minute)
+	from := to.Add(-5 * time.Minute)
 	input := &cloudwatch.GetMetricDataInput{
 		StartTime:         aws.Time(from),
 		EndTime:           aws.Time(to),
