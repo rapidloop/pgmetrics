@@ -1878,7 +1878,7 @@ func (c *collector) isAWSAurora() bool {
 //	pg_ls_waldir
 //	pg_ls_archive_statusdir
 func (c *collector) getWALCountsv12() {
-	q1 := `SELECT name FROM pg_ls_waldir()`
+	q1 := `SELECT name FROM pg_ls_waldir() WHERE name ~ '^[0-9A-F]{24}$'`
 	q2 := `SELECT COUNT(*) FROM pg_ls_archive_statusdir() WHERE name ~ '^[0-9A-F]{24}.ready$'`
 
 	c.getWALCountsActual(q1, q2)
@@ -1889,7 +1889,7 @@ func (c *collector) getWALCountsv12() {
 //	pg_ls_waldir
 //	pg_ls_dir (if not aws)
 func (c *collector) getWALCountsv11() {
-	q1 := `SELECT name FROM pg_ls_waldir()`
+	q1 := `SELECT name FROM pg_ls_waldir() WHERE name ~ '^[0-9A-F]{24}$'`
 	q2 := `SELECT COUNT(*) FROM pg_ls_dir('pg_wal/archive_status') WHERE pg_ls_dir ~ '^[0-9A-F]{24}.ready$'`
 
 	// no one has perms for pg_ls_dir in AWS RDS, so don't try to get archive
@@ -1939,7 +1939,6 @@ func (c *collector) getWALCountsActual(q1, q2 string) {
 	c.result.HighestWALSegment = 0
 	count, highest := 0, uint64(0)
 	if rows, err := c.db.QueryContext(ctx, q1); err == nil {
-		defer rows.Close()
 		for rows.Next() {
 			var name string
 			if err := rows.Scan(&name); err != nil || len(name) != 24 {
@@ -1962,6 +1961,7 @@ func (c *collector) getWALCountsActual(q1, q2 string) {
 			c.result.WALCount = count
 			c.result.HighestWALSegment = highest
 		}
+		rows.Close()
 	}
 
 	// count the number of WAL files that are ready for archiving, if we have
