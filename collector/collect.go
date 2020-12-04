@@ -470,6 +470,7 @@ func (c *collector) collectDatabase(o CollectConfig) {
 	}
 	if !arrayHas(o.Omit, "tables") && !arrayHas(o.Omit, "indexes") {
 		c.getIndexes(!o.NoSizes)
+		c.getIndexDef()
 	}
 	if !arrayHas(o.Omit, "sequences") {
 		c.getSequences()
@@ -1419,7 +1420,7 @@ func (c *collector) getIndexes(fillSize bool) {
 			current_database(), S.idx_scan, S.idx_tup_read, S.idx_tup_fetch,
 			pg_stat_get_blocks_fetched(S.indexrelid) - pg_stat_get_blocks_hit(S.indexrelid) AS idx_blks_read,
 			pg_stat_get_blocks_hit(S.indexrelid) AS idx_blks_hit,
-			C.relnatts, AM.amname, C.reltablespace, pg_get_indexdef(S.indexrelid)
+			C.relnatts, AM.amname, C.reltablespace
 		FROM pg_stat_user_indexes AS S
 			JOIN pg_class AS C
 			ON S.indexrelid = C.oid
@@ -1439,8 +1440,7 @@ func (c *collector) getIndexes(fillSize bool) {
 		if err := rows.Scan(&idx.TableOID, &idx.OID, &idx.SchemaName,
 			&idx.TableName, &idx.Name, &idx.DBName, &idx.IdxScan,
 			&idx.IdxTupRead, &idx.IdxTupFetch, &idx.IdxBlksRead,
-			&idx.IdxBlksHit, &idx.RelNAtts, &idx.AMName, &tblspcOID,
-			&idx.Definition); err != nil {
+			&idx.IdxBlksHit, &idx.RelNAtts, &idx.AMName, &tblspcOID); err != nil {
 			log.Fatalf("pg_stat_user_indexes query failed: %v", err)
 		}
 		idx.Size = -1  // will be filled in later if asked for
@@ -1467,6 +1467,38 @@ func (c *collector) getIndexes(fillSize bool) {
 	for i := startIdx; i < len(c.result.Indexes); i++ {
 		c.fillIndexSize(&c.result.Indexes[i])
 	}
+}
+
+// getIndexDef gets the definition of all indexes. Used to be collected along
+// with getIndexes(), but pg_get_indexdef() will wait for access exclusive
+// locks on the table in question. By collecting this separately, we'll
+// silently fail the collection of just the index defs, and let the collection
+// of index stats succeed.
+func (c *collector) getIndexDef() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT indexrelid, pg_get_indexdef(indexrelid) FROM pg_stat_user_indexes`
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		return // ignore errors silently, ok to fail to get the defn
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var oid int
+		var defn string
+		if err := rows.Scan(&oid, &defn); err != nil {
+			break // abort silently
+		}
+		for i := range c.result.Indexes {
+			if c.result.Indexes[i].OID == oid {
+				c.result.Indexes[i].Definition = defn
+				break
+			}
+		}
+	}
+	// ignore checking for rows.Err()
 }
 
 func (c *collector) getSequences() {
