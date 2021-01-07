@@ -107,14 +107,13 @@ func (ac *awsCollector) collect(dbid string, out *pgmetrics.RDS) (err error) {
 		StartTime:         aws.Time(from),
 		EndTime:           aws.Time(to),
 		ScanBy:            aws.String("TimestampDescending"),
-		MaxDatapoints:     aws.Int64(1),
 		MetricDataQueries: queries,
 	}
 
 	// actually get metrics
 	err = cwsvc.GetMetricDataPages(input, func(page *cloudwatch.GetMetricDataOutput, lastPage bool) bool {
 		for _, r := range page.MetricDataResults {
-			if len(r.Timestamps) == 1 && len(r.Values) == 1 {
+			if len(r.Timestamps) >= 1 && len(r.Values) >= 1 {
 				id := strings.TrimPrefix(*r.Id, "id")
 				val := *r.Values[0]
 				if len(out.Basic) == 0 {
