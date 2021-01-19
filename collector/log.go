@@ -113,6 +113,10 @@ func (c *collector) readLogLinesText(filename string) error {
 		return err
 	}
 
+	return c.processLogBuf(start, bigbuf)
+}
+
+func (c *collector) processLogBuf(start time.Time, bigbuf []byte) (err error) {
 	count := 0
 	pos := c.rxPrefix.FindIndex(bigbuf)
 	for len(pos) == 2 && len(bigbuf) > 0 {

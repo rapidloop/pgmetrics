@@ -18,7 +18,9 @@ package collector
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -157,4 +159,76 @@ func (ac *awsCollector) collect(dbid string, out *pgmetrics.RDS) (err error) {
 	}
 
 	return
+}
+
+func (ac *awsCollector) collectLogs(dbid string, start time.Time, cb func(lines []byte)) (err error) {
+	if len(dbid) == 0 || cb == nil {
+		return errors.New("internal error, bad input")
+	}
+
+	type logFilesType struct {
+		name string
+		last time.Time
+	}
+
+	// describe db log files
+	rdssvc := rds.New(ac.sess)
+	input := &rds.DescribeDBLogFilesInput{
+		DBInstanceIdentifier: aws.String(dbid),
+		FileLastWritten:      aws.Int64(start.Unix() * 1000),
+	}
+	var logFiles []logFilesType
+	err = rdssvc.DescribeDBLogFilesPages(input, func(page *rds.DescribeDBLogFilesOutput, lastPage bool) bool {
+		if page == nil {
+			return false // should not happen
+		}
+		for _, d := range page.DescribeDBLogFiles {
+			if d != nil && d.LastWritten != nil && d.LogFileName != nil {
+				logFiles = append(logFiles, logFilesType{
+					name: *d.LogFileName,
+					last: time.Unix(*d.LastWritten/1000, *d.LastWritten%1000),
+				})
+			}
+		}
+		return true
+	})
+	if err != nil {
+		err = fmt.Errorf("failed to DescribeDBLogFilesPages: %v", err)
+		return
+	}
+
+	// sort the log files, oldest first
+	sort.SliceStable(logFiles, func(i, j int) bool {
+		return logFiles[i].last.Before(logFiles[j].last)
+	})
+
+	// download db log file portion
+	for _, lf := range logFiles {
+		marker := "0"
+		done := false
+		var lines []byte
+		for !done {
+			output, err := rdssvc.DownloadDBLogFilePortion(
+				&rds.DownloadDBLogFilePortionInput{
+					DBInstanceIdentifier: aws.String(dbid),
+					LogFileName:          aws.String(lf.name),
+					Marker:               aws.String(marker),
+				},
+			)
+			if err != nil {
+				return fmt.Errorf("failed to DownloadDBLogFilePortionPages: %v", err)
+			}
+			if output == nil || output.LogFileData == nil || output.Marker == nil ||
+				output.AdditionalDataPending == nil {
+				break // should not happen
+			}
+			lines = append(lines, []byte(*output.LogFileData)...)
+			marker = *output.Marker
+			done = !*output.AdditionalDataPending
+		}
+		if len(lines) > 0 {
+			cb(lines)
+		}
+	}
+	return nil
 }

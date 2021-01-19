@@ -199,12 +199,13 @@ func Collect(o CollectConfig, dbnames []string) *pgmetrics.Model {
 		}
 	}
 	if !arrayHas(o.Omit, "log") && c.local {
+		// note: for rds we collect logs in the next step
 		c.collectLogs(o)
 	}
 
 	// collect from RDS if database id is specified
 	if len(o.RDSDBIdentifier) > 0 {
-		collectFromRDS(o.RDSDBIdentifier, &c.result)
+		c.collectFromRDS(o)
 	}
 
 	return &c.result
@@ -2692,16 +2693,36 @@ func (c *collector) getPrefix() bool {
 	return true
 }
 
-func collectFromRDS(dbid string, result *pgmetrics.Model) {
-	ac, err := newAwsCollector()
-	if err == nil {
-		rds := &pgmetrics.RDS{}
-		if err = ac.collect(dbid, rds); err == nil {
-			result.RDS = rds
+func (c *collector) collectFromRDS(o CollectConfig) {
+	dbid := o.RDSDBIdentifier
+	var err error
+	defer func() {
+		if err != nil {
+			log.Printf("warning: failed to collect from AWS RDS: %v", err)
 		}
-	}
+	}()
+
+	ac, err := newAwsCollector()
 	if err != nil {
-		log.Printf("warning: failed to collect from AWS RDS: %v", err)
+		return
+	}
+
+	rds := &pgmetrics.RDS{}
+	if err = ac.collect(dbid, rds); err != nil {
+		return
+	}
+	c.result.RDS = rds
+
+	if !arrayHas(o.Omit, "log") {
+		if !c.getPrefix() {
+			return // already logged
+		}
+		window := time.Duration(c.logSpan) * time.Minute
+		start := time.Now().Add(-window)
+
+		err = ac.collectLogs(dbid, start, func(lines []byte) {
+			c.processLogBuf(start, lines)
+		})
 	}
 }
 
