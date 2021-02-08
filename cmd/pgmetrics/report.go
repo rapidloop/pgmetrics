@@ -321,7 +321,9 @@ WAL Files:
 	tw1.add("archive_timeout", getSetting(result, "archive_timeout"))
 	tw1.add("wal_compression", getSetting(result, "wal_compression"))
 	tw1.add(maxwalk, maxwalv)
-	tw1.add("min_wal_size", getSettingBytes(result, "min_wal_size", 16*1024*1024)) //getMinWalSize(result))
+	if mws := getMinWalSize(result); mws != "" {
+		tw1.add("min_wal_size", mws)
+	}
 	tw1.add("checkpoint_timeout", getSetting(result, "checkpoint_timeout"))
 	tw1.add("full_page_writes", getSetting(result, "full_page_writes"))
 	if version >= 130000 {
@@ -1601,6 +1603,15 @@ func getMaxWalSize(result *pgmetrics.Model) (key, val string) {
 	} else {
 		key = "checkpoint_segments"
 		val = getSetting(result, key)
+	}
+	return
+}
+
+func getMinWalSize(result *pgmetrics.Model) (val string) {
+	if version := getVersion(result); version >= 100000 {
+		val = getSettingBytes(result, "min_wal_size", 1024*1024)
+	} else if version >= 90500 {
+		val = getSettingBytes(result, "min_wal_size", 16*1024*1024)
 	}
 	return
 }
