@@ -14,8 +14,8 @@ github.com/pborman/getopt v0.0.0-20170112200414-7148bc3a4c30/go.mod h1:85jBQOZwp
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/rapidloop/pq v1.0.1-0.20190218105255-66681b501d6d h1:EWq3ibHQWraca0IXLiB3/uTnYPPC2nGC2tsIvnLVjNo=
-github.com/rapidloop/pq v1.0.1-0.20190218105255-66681b501d6d/go.mod h1:KCIg3rAcDl7ELp5s30z4lIp1xaOujoaMXnlYKhHECFo=
+github.com/rapidloop/pq v1.1.0 h1:Xe0Sjb08bcnjYEt4PeSSesZTQR+L2NEV5UY3u6WYomo=
+github.com/rapidloop/pq v1.1.0/go.mod h1:KCIg3rAcDl7ELp5s30z4lIp1xaOujoaMXnlYKhHECFo=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.4.0 h1:2E4SXV/wtOkTonXsotYi4li6zVWxYlZuYNCXe9XRJyk=
 github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81PSLYec5m4=

@@ -2372,13 +2372,24 @@ func (c *collector) getPBServers() {
 	}
 	defer rows.Close()
 
+	var ncols int
+	if cols, err := rows.Columns(); err == nil {
+		ncols = len(cols)
+	}
+
 	for rows.Next() {
 		var s [14]sql.NullString
 		var state string
 		var wait, waitUs float64
-		if err := rows.Scan(&s[0], &s[1], &s[2], &state, &s[3], &s[4], &s[5],
-			&s[6], &s[7], &s[8], &wait, &waitUs, &s[9], &s[10], &s[11],
-			&s[12], &s[13]); err != nil {
+		if ncols == 16 {
+			err = rows.Scan(&s[0], &s[1], &s[2], &state, &s[3], &s[4], &s[5],
+				&s[6], &s[7], &s[8], &wait, &waitUs, &s[9], &s[10], &s[11], &s[12])
+		} else {
+			err = rows.Scan(&s[0], &s[1], &s[2], &state, &s[3], &s[4], &s[5],
+				&s[6], &s[7], &s[8], &wait, &waitUs, &s[9], &s[10], &s[11], &s[12],
+				&s[13])
+		}
+		if err != nil {
 			log.Fatalf("show servers query failed: %v", err)
 		}
 		wait += waitUs / 1e6 // convert usec -> sec
@@ -2429,14 +2440,25 @@ func (c *collector) getPBClients() {
 	}
 	defer rows.Close()
 
+	var ncols int
+	if cols, err := rows.Columns(); err == nil {
+		ncols = len(cols)
+	}
+
 	var totalWait float64
 	for rows.Next() {
 		var s [14]sql.NullString
 		var state string
 		var wait, waitUs float64
-		if err := rows.Scan(&s[0], &s[1], &s[2], &state, &s[3], &s[4], &s[5],
-			&s[6], &s[7], &s[8], &wait, &waitUs, &s[9], &s[10], &s[11],
-			&s[12], &s[13]); err != nil {
+		if ncols == 16 {
+			err = rows.Scan(&s[0], &s[1], &s[2], &state, &s[3], &s[4], &s[5],
+				&s[6], &s[7], &s[8], &wait, &waitUs, &s[9], &s[10], &s[11], &s[12])
+		} else {
+			err = rows.Scan(&s[0], &s[1], &s[2], &state, &s[3], &s[4], &s[5],
+				&s[6], &s[7], &s[8], &wait, &waitUs, &s[9], &s[10], &s[11], &s[12],
+				&s[13])
+		}
+		if err != nil {
 			log.Fatalf("show clients query failed: %v", err)
 		}
 		wait += waitUs / 1e6 // convert usec -> sec
