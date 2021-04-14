@@ -10,6 +10,7 @@ builds:
       - arm
       - arm64
     flags:
+      - -a
       - -trimpath
     ldflags:
       - -s -w -X main.version={{.Version}} -extldflags "-static"
