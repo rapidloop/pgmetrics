@@ -626,7 +626,9 @@ func (c *collector) getLocal() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	q := `SELECT COALESCE(inet_client_addr() = inet_server_addr(), TRUE)`
+	// see also https://github.com/rapidloop/pgmetrics/issues/39
+	q := `SELECT COALESCE(inet_client_addr() = inet_server_addr(), TRUE)
+			OR (inet_server_addr() << '127.0.0.0/8' AND inet_client_addr() << '127.0.0.0/8')`
 	if err := c.db.QueryRowContext(ctx, q).Scan(&c.local); err != nil {
 		c.local = false // don't fail on errors
 	}
