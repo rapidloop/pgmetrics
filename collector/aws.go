@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -82,11 +83,12 @@ func (ac *awsCollector) collect(dbid string, out *pgmetrics.RDS) (err error) {
 	}
 
 	// form query input
+	names := make([]string, len(avmetrics.Metrics))
 	queries := make([]*cloudwatch.MetricDataQuery, len(avmetrics.Metrics))
 	for i, m := range avmetrics.Metrics {
-		mn := *m.MetricName
+		names[i] = *m.MetricName
 		queries[i] = &cloudwatch.MetricDataQuery{
-			Id: aws.String("id" + mn),
+			Id: aws.String(fmt.Sprintf("id%d", i)),
 			MetricStat: &cloudwatch.MetricStat{
 				Metric: &cloudwatch.Metric{
 					Dimensions: []*cloudwatch.Dimension{
@@ -95,7 +97,7 @@ func (ac *awsCollector) collect(dbid string, out *pgmetrics.RDS) (err error) {
 							Value: aws.String(dbid),
 						},
 					},
-					MetricName: aws.String(mn),
+					MetricName: aws.String(names[i]),
 					Namespace:  aws.String("AWS/RDS"),
 				},
 				Period: aws.Int64(60),
@@ -116,12 +118,14 @@ func (ac *awsCollector) collect(dbid string, out *pgmetrics.RDS) (err error) {
 	err = cwsvc.GetMetricDataPages(input, func(page *cloudwatch.GetMetricDataOutput, lastPage bool) bool {
 		for _, r := range page.MetricDataResults {
 			if len(r.Timestamps) >= 1 && len(r.Values) >= 1 {
-				id := strings.TrimPrefix(*r.Id, "id")
-				val := *r.Values[0]
-				if len(out.Basic) == 0 {
-					out.Basic = map[string]float64{id: val}
-				} else {
-					out.Basic[id] = val
+				if id, err := strconv.Atoi(strings.TrimPrefix(*r.Id, "id")); err == nil && id >= 0 && id < len(names) {
+					name := names[id]
+					val := *r.Values[0]
+					if len(out.Basic) == 0 {
+						out.Basic = map[string]float64{name: val}
+					} else {
+						out.Basic[name] = val
+					}
 				}
 			}
 		}
