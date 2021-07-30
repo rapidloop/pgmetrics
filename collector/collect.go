@@ -611,7 +611,7 @@ func (c *collector) getWALArchiver() {
 			failed_count,
 			COALESCE(last_failed_wal, ''),
 			COALESCE(EXTRACT(EPOCH FROM last_failed_time)::bigint, 0),
-			EXTRACT(EPOCH FROM stats_reset)::bigint
+			COALESCE(EXTRACT(EPOCH FROM stats_reset)::bigint, 0)
 		  FROM pg_stat_archiver`
 	a := &c.result.WALArchiving
 	if err := c.db.QueryRowContext(ctx, q).Scan(&a.ArchivedCount, &a.LastArchivedWAL,
