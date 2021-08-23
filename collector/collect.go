@@ -2332,7 +2332,7 @@ func (c *collector) getPBPools() {
 		var pool pgmetrics.PgBouncerPool
 		var maxWaitUs float64
 		if err := rows.Scan(&pool.Database, &pool.UserName, &pool.ClActive,
-			&pool.ClWaiting, &pool.SvActive, &pool.SvIdle, &pool.SvUsed,
+			&pool.ClWaiting, &pool.ClCancelReq, &pool.SvActive, &pool.SvIdle, &pool.SvUsed,
 			&pool.SvTested, &pool.SvLogin, &pool.MaxWait, &maxWaitUs, &pool.Mode); err != nil {
 			log.Fatalf("show pools query failed: %v", err)
 		}
