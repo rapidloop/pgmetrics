@@ -464,8 +464,14 @@ func compilePrefix(prefix string) (*regexp.Regexp, error) {
 			r += `\d{4}-\d{1,2}-\d{1,2} \d{2}:\d{2}:\d{2} \S+`
 		case 'u': // username
 			r += `(?P<u>[A-Za-z0-9_.\[\]-]{1,64})`
+			if !hasq {
+				r += `?`
+			}
 		case 'd': // database name
 			r += `(?P<d>[A-Za-z0-9_.\[\]-]{1,64})`
+			if !hasq {
+				r += `?`
+			}
 		case 'q': // rest are optional
 			r += `(?:` // needs termination
 			hasq = true
