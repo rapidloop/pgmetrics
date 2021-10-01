@@ -339,6 +339,7 @@ func (c *collector) collectFirst(db *sql.DB, o CollectConfig) {
 	} else {
 		// postgres mode:
 		// get settings and other configuration
+		c.getCurrentUser()
 		c.getSettings()
 		if v, err := strconv.Atoi(c.setting("server_version_num")); err != nil {
 			log.Fatalf("bad server_version_num: %v", err)
@@ -554,6 +555,16 @@ func (c *collector) tableOK(schema, table string) bool {
 		}
 	}
 	return true
+}
+
+func (c *collector) getCurrentUser() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT current_user`
+	if err := c.db.QueryRowContext(ctx, q).Scan(&c.result.Metadata.Username); err != nil {
+		log.Fatalf("current_user failed: %v", err)
+	}
 }
 
 func (c *collector) setting(key string) string {

@@ -18,6 +18,7 @@ package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
+//    1.11 -
 //    1.10 - New fields in pg_stat_statements for Postgres 13
 //    1.9 - Postgres 13, Citus support
 //    1.8 - AWS RDS/EnhancedMonitoring metrics, index defn,
@@ -30,7 +31,7 @@ package pgmetrics
 //    1.2 - more table and index attributes
 //    1.1 - added NotificationQueueUsage and Statements
 //    1.0 - initial release
-const ModelSchemaVersion = "1.10"
+const ModelSchemaVersion = "1.11"
 
 // Model contains the entire information collected by a single run of
 // pgmetrics. It can be converted to and from json without loss of
@@ -218,6 +219,7 @@ type Metadata struct {
 	CollectedDBs []string `json:"collected_dbs"` // names of dbs we collected db-level stats from
 	Local        bool     `json:"local"`         // was connected to a local postgres server?
 	UserAgent    string   `json:"user_agent"`    // "pgmetrics/1.8.1"
+	Username     string   `json:"user"`          // user that pgmetrics connected as
 }
 
 type SystemMetrics struct {
