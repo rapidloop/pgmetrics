@@ -481,6 +481,8 @@ type ReplicationOut struct {
 	SyncState       string `json:"sync_state"`
 	// following fields present only in schema 1.5 and later
 	PID int `json:"pid,omitempty"`
+	// following fields present only in schema 1.11 and later
+	ReplyTime int64 `json:"reply_time,omitempty"` // >= pg12
 }
 
 type ReplicationIn struct {

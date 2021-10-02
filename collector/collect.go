@@ -684,9 +684,16 @@ func (c *collector) getReplicationv10() {
 			COALESCE(EXTRACT(EPOCH FROM replay_lag)::bigint, 0),
 			COALESCE(sync_priority, -1),
 			COALESCE(sync_state, ''),
+			@reply_time@,
 			pid
 		  FROM pg_stat_replication
 		  ORDER BY pid ASC`
+	if c.version >= 120000 {
+		// for pg v12+ also collect reply_time
+		q = strings.Replace(q, "@reply_time@", `COALESCE(EXTRACT(EPOCH FROM reply_time)::bigint, 0)`, 1)
+	} else {
+		q = strings.Replace(q, "@reply_time@", `0`, 1)
+	}
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
 		log.Printf("warning: pg_stat_replication query failed: %v", err)
@@ -700,7 +707,7 @@ func (c *collector) getReplicationv10() {
 		if err := rows.Scan(&r.RoleName, &r.ApplicationName, &r.ClientAddr,
 			&r.BackendStart, &backendXmin, &r.State, &r.SentLSN, &r.WriteLSN,
 			&r.FlushLSN, &r.ReplayLSN, &r.WriteLag, &r.FlushLag, &r.ReplayLag,
-			&r.SyncPriority, &r.SyncState, &r.PID); err != nil {
+			&r.SyncPriority, &r.SyncState, &r.ReplyTime, &r.PID); err != nil {
 			log.Fatalf("pg_stat_replication query failed: %v", err)
 		}
 		r.BackendXmin = int(backendXmin.Int64)
