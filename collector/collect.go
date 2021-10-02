@@ -579,7 +579,8 @@ func (c *collector) getSettings() {
 	defer cancel()
 
 	q := `SELECT name, setting, COALESCE(boot_val,''), source,
-			COALESCE(sourcefile,''), COALESCE(sourceline,0)
+			COALESCE(sourcefile,''), COALESCE(sourceline,0),
+			pending_restart
 		  FROM pg_settings
 		  ORDER BY name ASC`
 	rows, err := c.db.QueryContext(ctx, q)
@@ -592,7 +593,7 @@ func (c *collector) getSettings() {
 	for rows.Next() {
 		var s pgmetrics.Setting
 		var name, sf, sl string
-		if err := rows.Scan(&name, &s.Setting, &s.BootVal, &s.Source, &sf, &sl); err != nil {
+		if err := rows.Scan(&name, &s.Setting, &s.BootVal, &s.Source, &sf, &sl, &s.Pending); err != nil {
 			log.Fatalf("pg_settings query failed: %v", err)
 		}
 		if len(sf) > 0 {

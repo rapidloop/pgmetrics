@@ -435,6 +435,8 @@ type Setting struct {
 	Setting string `json:"setting"`
 	BootVal string `json:"bootval,omitempty"`
 	Source  string `json:"source,omitempty"`
+	// following fields present only in schema 1.11 and later
+	Pending bool `json:"pending,omitempty"`
 }
 
 type WALArchiving struct {
