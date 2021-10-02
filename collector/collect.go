@@ -775,14 +775,19 @@ func (c *collector) getWalReceiverv13() {
 			flushed_lsn, received_tli, last_msg_send_time, last_msg_receipt_time,
 			latest_end_lsn,
 			COALESCE(EXTRACT(EPOCH FROM latest_end_time)::bigint, 0),
-			COALESCE(slot_name, ''), conninfo
+			COALESCE(slot_name, ''), conninfo, @sender_host@
 		  FROM pg_stat_wal_receiver`
+	if c.version >= 110000 {
+		q = strings.Replace(q, "@sender_host@", `COALESCE(sender_host, '')`, 1)
+	} else {
+		q = strings.Replace(q, "@sender_host@", `''`, 1)
+	}
 	var r pgmetrics.ReplicationIn
 	var msgSend, msgRecv pq.NullTime
 	if err := c.db.QueryRowContext(ctx, q).Scan(&r.Status, &r.ReceiveStartLSN,
 		&r.ReceiveStartTLI, &r.WrittenLSN, &r.FlushedLSN, &r.ReceivedTLI,
 		&msgSend, &msgRecv, &r.LatestEndLSN, &r.LatestEndTime, &r.SlotName,
-		&r.Conninfo); err != nil {
+		&r.Conninfo, &r.SenderHost); err != nil {
 		if err == sql.ErrNoRows {
 			return // not an error
 		}

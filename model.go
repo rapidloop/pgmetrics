@@ -501,6 +501,8 @@ type ReplicationIn struct {
 	// following fields present only in schema 1.9 and later (13.x+)
 	WrittenLSN string `json:"written_lsn,omitempty"`
 	FlushedLSN string `json:"flushed_lsn,omitempty"`
+	// following fields present only in schema 1.11 and later
+	SenderHost string `json:"sender_host,omitempty"` // >= pg11
 }
 
 type Trigger struct {
