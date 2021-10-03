@@ -266,6 +266,10 @@ type ReplicationSlot struct {
 	RestartLSN        string `json:"restart_lsn"`
 	ConfirmedFlushLSN string `json:"confirmed_flush_lsn"`
 	Temporary         bool   `json:"temporary"`
+	// following fields present only in schema 1.11 and later
+	WALStatus   string `json:"wal_status,omitempty"`    // >= pg13
+	SafeWALSize int64  `json:"safe_wal_size,omitempty"` // >= pg13
+	TwoPhase    bool   `json:"two_phase,omitempty"`     // >= pg14
 }
 
 type Role struct {

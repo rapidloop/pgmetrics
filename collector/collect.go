@@ -1705,14 +1705,25 @@ func (c *collector) getReplicationSlotsv94() {
 
 	q := `SELECT slot_name, COALESCE(plugin, ''), slot_type,
 			COALESCE(database, ''), active, xmin, catalog_xmin,
-			restart_lsn, confirmed_flush_lsn, temporary
+			restart_lsn, confirmed_flush_lsn, temporary,
+			@wal_status@, @safe_wal_size@, two_phase
 		  FROM pg_replication_slots
 		  ORDER BY slot_name ASC`
-	if c.version < pgv96 { // confirmed_flush_lsn only in v9.6+
-		q = strings.Replace(q, "confirmed_flush_lsn", "''", 1)
+	if c.version < pgv96 { // confirmed_flush_lsn only in pg >= 9.6
+		q = strings.Replace(q, "confirmed_flush_lsn", `''`, 1)
 	}
-	if c.version < pgv10 { // temporary only in v10+
-		q = strings.Replace(q, "temporary", "FALSE", 1)
+	if c.version < pgv10 { // temporary only in pg >= 10
+		q = strings.Replace(q, "temporary", `FALSE`, 1)
+	}
+	if c.version < pgv13 { // wal_status and safe_wal_size only in pg >= 13
+		q = strings.Replace(q, "@wal_status@", `''`, 1)
+		q = strings.Replace(q, "@safe_wal_size@", `0::bigint`, 1)
+	} else {
+		q = strings.Replace(q, "@wal_status@", `COALESCE(wal_status, '')`, 1)
+		q = strings.Replace(q, "@safe_wal_size@", `COALESCE(safe_wal_size, 0)::bigint`, 1)
+	}
+	if c.version < pgv14 { // two_phase only in pg >= 14
+		q = strings.Replace(q, "two_phase", `FALSE`, 1)
 	}
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
@@ -1727,7 +1738,7 @@ func (c *collector) getReplicationSlotsv94() {
 		var rlsn, cflsn sql.NullString
 		if err := rows.Scan(&rs.SlotName, &rs.Plugin, &rs.SlotType,
 			&rs.DBName, &rs.Active, &xmin, &cXmin, &rlsn, &cflsn,
-			&rs.Temporary); err != nil {
+			&rs.Temporary, &rs.WALStatus, &rs.SafeWALSize, &rs.TwoPhase); err != nil {
 			log.Fatalf("pg_replication_slots query failed: %v", err)
 		}
 		rs.Xmin = int(xmin.Int64)
