@@ -36,6 +36,18 @@ import (
 	"github.com/rapidloop/pq"
 )
 
+// Postgres version constants
+const (
+	pgv94 = 9_04_00
+	pgv95 = 9_05_00
+	pgv96 = 9_06_00
+	pgv10 = 10_00_00
+	pgv11 = 11_00_00
+	pgv12 = 12_00_00
+	pgv13 = 13_00_00
+	pgv14 = 14_00_00
+)
+
 // See https://www.postgresql.org/docs/current/static/libpq-connect.html#LIBPQ-CONNSTRING
 func makeKV(k, v string) string {
 	var v2 string
@@ -374,80 +386,80 @@ func (c *collector) collectNext(db *sql.DB, o CollectConfig) {
 func (c *collector) collectCluster(o CollectConfig) {
 	c.getStartTime()
 
-	if c.version >= 90600 {
+	if c.version >= pgv96 {
 		c.getControlSystemv96()
 	}
 
-	if c.version >= 90500 {
+	if c.version >= pgv95 {
 		c.getLastXactv95()
 	}
 
-	if c.version >= 110000 {
+	if c.version >= pgv11 {
 		c.getControlCheckpointv11()
-	} else if c.version >= 100000 {
+	} else if c.version >= pgv10 {
 		c.getControlCheckpointv10()
-	} else if c.version >= 90600 {
+	} else if c.version >= pgv96 {
 		c.getControlCheckpointv96()
 	}
 
-	if c.version >= 90600 {
+	if c.version >= pgv96 {
 		c.getActivityv96()
-	} else if c.version >= 90400 {
+	} else if c.version >= pgv94 {
 		c.getActivityv94()
 	} else {
 		c.getActivityv93()
 	}
 
-	if c.version >= 100000 {
+	if c.version >= pgv10 {
 		c.getBETypeCountsv10()
 	}
 
-	if c.version >= 90400 {
+	if c.version >= pgv94 {
 		c.getWALArchiver()
 	}
 
 	c.getBGWriter()
 
-	if c.version >= 100000 {
+	if c.version >= pgv10 {
 		c.getReplicationv10()
 	} else {
 		c.getReplicationv9()
 	}
 
-	if c.version >= 130000 {
+	if c.version >= pgv13 {
 		c.getWalReceiverv13()
-	} else if c.version >= 90600 {
+	} else if c.version >= pgv96 {
 		c.getWalReceiverv96()
 	}
 
-	if c.version >= 100000 {
+	if c.version >= pgv10 {
 		c.getAdminFuncv10()
 	} else {
 		c.getAdminFuncv9()
 	}
 
-	if c.version >= 90600 {
+	if c.version >= pgv96 {
 		c.getVacuumProgress()
 	}
 
 	c.getDatabases(!o.NoSizes, o.OnlyListedDBs, c.dbnames)
 	c.getTablespaces(!o.NoSizes)
 
-	if c.version >= 90400 {
+	if c.version >= pgv94 {
 		c.getReplicationSlotsv94()
 	}
 
 	c.getRoles()
 
-	if c.version >= 120000 {
+	if c.version >= pgv12 {
 		c.getWALCountsv12()
-	} else if c.version >= 110000 {
+	} else if c.version >= pgv11 {
 		c.getWALCountsv11()
 	} else {
 		c.getWALCounts()
 	}
 
-	if c.version >= 90600 {
+	if c.version >= pgv96 {
 		c.getNotification()
 	}
 
@@ -464,7 +476,7 @@ func (c *collector) collectDatabase(o CollectConfig) {
 	if !arrayHas(o.Omit, "tables") {
 		c.getTables(!o.NoSizes)
 		// partition information, added schema v1.2
-		if c.version >= 100000 {
+		if c.version >= pgv10 {
 			c.getPartitionInfo()
 		}
 		// parent information, added schema v1.2
@@ -492,7 +504,7 @@ func (c *collector) collectDatabase(o CollectConfig) {
 	c.getBloat()
 
 	// logical replication, added schema v1.2
-	if c.version >= 100000 {
+	if c.version >= pgv10 {
 		c.getPublications()
 		c.getSubscriptions()
 	}
@@ -688,7 +700,7 @@ func (c *collector) getReplicationv10() {
 			pid
 		  FROM pg_stat_replication
 		  ORDER BY pid ASC`
-	if c.version >= 120000 {
+	if c.version >= pgv12 {
 		// for pg v12+ also collect reply_time
 		q = strings.Replace(q, "@reply_time@", `COALESCE(EXTRACT(EPOCH FROM reply_time)::bigint, 0)`, 1)
 	} else {
@@ -735,7 +747,7 @@ func (c *collector) getReplicationv9() {
 			pid
 		  FROM pg_stat_replication
 		  ORDER BY pid ASC`
-	if c.version < 90400 { // backend_xmin is only in v9.4+
+	if c.version < pgv94 { // backend_xmin is only in v9.4+
 		q = strings.Replace(q, "backend_xmin", "0", 1)
 	}
 	rows, err := c.db.QueryContext(ctx, q)
@@ -777,7 +789,7 @@ func (c *collector) getWalReceiverv13() {
 			COALESCE(EXTRACT(EPOCH FROM latest_end_time)::bigint, 0),
 			COALESCE(slot_name, ''), conninfo, @sender_host@
 		  FROM pg_stat_wal_receiver`
-	if c.version >= 110000 {
+	if c.version >= pgv11 {
 		q = strings.Replace(q, "@sender_host@", `COALESCE(sender_host, '')`, 1)
 	} else {
 		q = strings.Replace(q, "@sender_host@", `''`, 1)
@@ -873,7 +885,7 @@ func (c *collector) getAdminFuncv9() {
 			}
 		}
 	} else {
-		if c.version >= 90600 && !c.isAWSAurora() { // don't attempt on Aurora
+		if c.version >= pgv96 && !c.isAWSAurora() { // don't attempt on Aurora
 			qx := `SELECT pg_current_xlog_flush_location(),
 					pg_current_xlog_insert_location(), pg_current_xlog_location()`
 			if err := c.db.QueryRowContext(ctx, qx).Scan(&c.result.WALFlushLSN,
@@ -1105,7 +1117,7 @@ func (c *collector) getActivityv96() {
 			COALESCE(state, ''), COALESCE(backend_xid, ''),
 			COALESCE(backend_xmin, ''), LEFT(COALESCE(query, ''), $1)
 		  FROM pg_stat_activity`
-	if c.version >= 100000 {
+	if c.version >= pgv10 {
 		q += " WHERE backend_type='client backend'"
 	}
 	q += " ORDER BY pid ASC"
@@ -1385,10 +1397,10 @@ func (c *collector) getTables(fillSize bool) {
 			JOIN pg_class AS C
 			ON C.oid = S.relid
 		  ORDER BY S.relid ASC`
-	if c.version < 90400 { // n_mod_since_analyze only in v9.4+
+	if c.version < pgv94 { // n_mod_since_analyze only in v9.4+
 		q = strings.Replace(q, "S.n_mod_since_analyze", "0", 1)
 	}
-	if c.version < 100000 { // relispartition only in v10+
+	if c.version < pgv10 { // relispartition only in v10+
 		q = strings.Replace(q, "C.relispartition", "false", 1)
 	}
 	rows, err := c.db.QueryContext(ctx, q)
@@ -1659,7 +1671,7 @@ func (c *collector) getRoles() {
 					WHERE M.member = R.oid)
 		  FROM pg_roles AS R
 		  ORDER BY R.oid ASC`
-	if c.version < 90500 { // RLS is only available in v9.5+
+	if c.version < pgv95 { // RLS is only available in v9.5+
 		q = strings.Replace(q, "R.rolbypassrls", "FALSE", 1)
 	}
 	rows, err := c.db.QueryContext(ctx, q)
@@ -1696,10 +1708,10 @@ func (c *collector) getReplicationSlotsv94() {
 			restart_lsn, confirmed_flush_lsn, temporary
 		  FROM pg_replication_slots
 		  ORDER BY slot_name ASC`
-	if c.version < 90600 { // confirmed_flush_lsn only in v9.6+
+	if c.version < pgv96 { // confirmed_flush_lsn only in v9.6+
 		q = strings.Replace(q, "confirmed_flush_lsn", "''", 1)
 	}
-	if c.version < 100000 { // temporary only in v10+
+	if c.version < pgv10 { // temporary only in v10+
 		q = strings.Replace(q, "temporary", "FALSE", 1)
 	}
 	rows, err := c.db.QueryContext(ctx, q)
@@ -1782,7 +1794,7 @@ func (c *collector) getStatements(currdb string) {
 		return
 	}
 
-	if c.version >= 130000 {
+	if c.version >= pgv13 {
 		c.getStatementsv13(currdb)
 	} else {
 		c.getStatementsPrev13(currdb)
@@ -1909,7 +1921,7 @@ func (c *collector) getStatementsPrev13(currdb string) {
 
 func (c *collector) getWALSegmentSize() (out int) {
 	out = 16 * 1024 * 1024 // default to 16MB
-	if c.version >= 110000 {
+	if c.version >= pgv11 {
 		if v, err := strconv.Atoi(c.setting("wal_segment_size")); err == nil {
 			out = v
 		}
@@ -1975,7 +1987,7 @@ func (c *collector) getWALCounts() {
 
 	q1 := `SELECT pg_ls_dir FROM pg_ls_dir('pg_xlog') WHERE pg_ls_dir ~ '^[0-9A-F]{24}$'`
 	q2 := `SELECT COUNT(*) FROM pg_ls_dir('pg_xlog/archive_status') WHERE pg_ls_dir ~ '^[0-9A-F]{24}.ready$'`
-	if c.version >= 100000 {
+	if c.version >= pgv10 {
 		q1 = strings.Replace(q1, "pg_xlog", "pg_wal", -1)
 		q2 = strings.Replace(q2, "pg_xlog", "pg_wal", -1)
 	}
@@ -2044,7 +2056,7 @@ func (c *collector) getNotification() {
 
 func (c *collector) getLocks() {
 	c.getLockRows()
-	if c.version >= 90600 {
+	if c.version >= pgv96 {
 		c.getBlockers96()
 	} else {
 		c.getBlockers()
@@ -2257,7 +2269,7 @@ func (c *collector) getParentInfo() {
 
 	q := `SELECT c.oid, i.inhparent::regclass
 			FROM pg_class c JOIN pg_inherits i ON c.oid=i.inhrelid`
-	if c.version >= 100000 { // exclude partition children in v10+
+	if c.version >= pgv10 { // exclude partition children in v10+
 		q += ` WHERE NOT c.relispartition`
 	}
 	rows, err := c.db.QueryContext(ctx, q)
@@ -2615,7 +2627,7 @@ func (c *collector) getLogInfo() {
 		c.setting("logging_collector") == "on"
 
 	// pg_current_logfile is only available in v10 and above
-	if c.version < 100000 {
+	if c.version < pgv10 {
 		return
 	}
 

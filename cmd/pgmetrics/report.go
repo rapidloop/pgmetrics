@@ -28,6 +28,18 @@ import (
 	"github.com/rapidloop/pgmetrics"
 )
 
+// Postgres version constants
+const (
+	pgv94 = 9_04_00
+	pgv95 = 9_05_00
+	pgv96 = 9_06_00
+	pgv10 = 10_00_00
+	pgv11 = 11_00_00
+	pgv12 = 12_00_00
+	pgv13 = 13_00_00
+	pgv14 = 14_00_00
+)
+
 func writeHumanTo(fd io.Writer, o options, result *pgmetrics.Model) {
 	if result.PgBouncer != nil {
 		pgbouncerWriteHumanTo(fd, o, result)
@@ -52,7 +64,7 @@ PostgreSQL Cluster:
 		getSetting(result, "server_version"),
 		fmtTimeAndSince(result.StartTime),
 	)
-	if version >= 90600 {
+	if version >= pgv96 {
 		fmt.Fprintf(fd, `
     System Identifier:   %s
     Timeline:            %d
@@ -92,7 +104,7 @@ PostgreSQL Cluster:
 		)
 	}
 
-	if version >= 90600 {
+	if version >= pgv96 {
 		fmt.Fprintf(fd, `
     Notification Queue:  %.1f%% used`, result.NotificationQueueUsage)
 	}
@@ -129,7 +141,7 @@ PostgreSQL Cluster:
 	reportBGWriter(fd, result)
 	reportBackends(fd, o.tooLongSec, result)
 	reportLocks(fd, result)
-	if version >= 90600 {
+	if version >= pgv96 {
 		reportVacuumProgress(fd, result)
 	}
 	reportRoles(fd, result)
@@ -230,7 +242,7 @@ Physical Replication Slots:
 `)
 		var tw tableWriter
 		cols := []interface{}{"Name", "Active", "Oldest Txn ID", "Restart LSN"}
-		if version >= 100000 {
+		if version >= pgv10 {
 			cols = append(cols, "Temporary")
 		}
 		tw.add(cols...)
@@ -240,7 +252,7 @@ Physical Replication Slots:
 			}
 			vals := []interface{}{r.SlotName, fmtYesNo(r.Active),
 				fmtIntZero(r.Xmin), r.RestartLSN}
-			if version >= 100000 {
+			if version >= pgv10 {
 				vals = append(vals, fmtYesNo(r.Temporary))
 			}
 			tw.add(vals...)
@@ -254,7 +266,7 @@ Logical Replication Slots:
 		var tw tableWriter
 		cols := []interface{}{"Name", "Plugin", "Database", "Active",
 			"Oldest Txn ID", "Restart LSN", "Flushed Until"}
-		if version >= 100000 {
+		if version >= pgv10 {
 			cols = append(cols, "Temporary")
 		}
 		tw.add(cols...)
@@ -265,7 +277,7 @@ Logical Replication Slots:
 			vals := []interface{}{r.SlotName, r.Plugin, r.DBName,
 				fmtYesNo(r.Active), fmtIntZero(r.Xmin), r.RestartLSN,
 				r.ConfirmedFlushLSN}
-			if version >= 100000 {
+			if version >= pgv10 {
 				vals = append(vals, fmtYesNo(r.Temporary))
 			}
 			tw.add(vals...)
@@ -326,7 +338,7 @@ WAL Files:
 	}
 	tw1.add("checkpoint_timeout", getSetting(result, "checkpoint_timeout"))
 	tw1.add("full_page_writes", getSetting(result, "full_page_writes"))
-	if version >= 130000 {
+	if version >= pgv13 {
 		tw1.add("wal_keep_size", getSettingBytes(result, "wal_keep_size", 1024*1024))
 	} else {
 		tw1.add("wal_keep_segments", getSetting(result, "wal_keep_segments"))
@@ -1594,10 +1606,10 @@ func getVersion(result *pgmetrics.Model) int {
 }
 
 func getMaxWalSize(result *pgmetrics.Model) (key, val string) {
-	if version := getVersion(result); version >= 100000 {
+	if version := getVersion(result); version >= pgv10 {
 		key = "max_wal_size"
 		val = getSettingBytes(result, key, 1024*1024)
-	} else if version >= 90500 {
+	} else if version >= pgv95 {
 		key = "max_wal_size"
 		val = getSettingBytes(result, key, 16*1024*1024)
 	} else {
@@ -1608,9 +1620,9 @@ func getMaxWalSize(result *pgmetrics.Model) (key, val string) {
 }
 
 func getMinWalSize(result *pgmetrics.Model) (val string) {
-	if version := getVersion(result); version >= 100000 {
+	if version := getVersion(result); version >= pgv10 {
 		val = getSettingBytes(result, "min_wal_size", 1024*1024)
-	} else if version >= 90500 {
+	} else if version >= pgv95 {
 		val = getSettingBytes(result, "min_wal_size", 16*1024*1024)
 	}
 	return
