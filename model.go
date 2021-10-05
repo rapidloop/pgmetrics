@@ -593,6 +593,8 @@ type Lock struct {
 	Mode        string `json:"mode"`
 	Granted     bool   `json:"granted"`
 	RelationOID int    `json:"relation_oid,omitempty"`
+	// following fields present only in schema 1.11 and later
+	WaitStart int64 `json:"waitstart,omitempty"` // >= pg14
 }
 
 // PgBouncer contains information collected from the virtual "pgbouncer"

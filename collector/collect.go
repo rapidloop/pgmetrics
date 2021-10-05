@@ -2080,8 +2080,13 @@ func (c *collector) getLockRows() {
 
 	q := `
 SELECT COALESCE(D.datname, ''), L.locktype, L.mode, L.granted,
-       COALESCE(L.pid, 0), COALESCE(L.relation, 0)
+       COALESCE(L.pid, 0), COALESCE(L.relation, 0), @waitstart@
   FROM pg_locks L LEFT OUTER JOIN pg_database D ON L.database = D.oid`
+	if c.version >= pgv14 { // waitstart only in pg >= 14
+		q = strings.Replace(q, `@waitstart@`, `COALESCE(EXTRACT(EPOCH FROM waitstart)::bigint, 0)`, 1)
+	} else {
+		q = strings.Replace(q, `@waitstart@`, `0`, 1)
+	}
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
 		log.Fatalf("pg_locks query failed: %v", err)
@@ -2091,7 +2096,7 @@ SELECT COALESCE(D.datname, ''), L.locktype, L.mode, L.granted,
 	for rows.Next() {
 		var l pgmetrics.Lock
 		if err := rows.Scan(&l.DBName, &l.LockType, &l.Mode, &l.Granted,
-			&l.PID, &l.RelationOID); err != nil {
+			&l.PID, &l.RelationOID, &l.WaitStart); err != nil {
 			log.Fatalf("pg_locks query failed: %v", err)
 		}
 		c.result.Locks = append(c.result.Locks, l)
