@@ -324,6 +324,16 @@ type Database struct {
 	BlkWriteTime    float64 `json:"blk_write_time"`
 	StatsReset      int64   `json:"stats_reset"`
 	Size            int64   `json:"size"`
+	// following fields present only in schema 1.11 and later
+	ChecksumFailures    int64   `json:"checksum_failures,omitempty"`        // >= pg12
+	ChecksumLastFailure int64   `json:"checksum_last_failure,omitempty"`    // >= pg12
+	SessionTime         float64 `json:"session_time,omitempty"`             // in milliseconds, pg >= v14
+	ActiveTime          float64 `json:"active_time,omitempty"`              // in milliseconds, pg >= v14
+	IdleInTxTime        float64 `json:"idle_in_transaction_time,omitempty"` // in milliseconds, pg >= v14
+	Sessions            int64   `json:"sessions,omitempty"`                 // pg >= v14
+	SessionsAbandoned   int64   `json:"sessions_abandoned,omitempty"`       // pg >= v14
+	SessionsFatal       int64   `json:"sessions_fatal,omitempty"`           // pg >= v14
+	SessionsKilled      int64   `json:"sessions_killed,omitempty"`          // pg >= v14
 }
 
 type Table struct {

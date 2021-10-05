@@ -1269,7 +1269,10 @@ func (c *collector) getDatabases(fillSize, onlyListed bool, dbList []string) {
 			S.tup_inserted, S.tup_updated, S.tup_deleted, S.conflicts,
 			S.temp_files, S.temp_bytes, S.deadlocks, S.blk_read_time,
 			S.blk_write_time,
-			COALESCE(EXTRACT(EPOCH FROM S.stats_reset)::bigint, 0)
+			COALESCE(EXTRACT(EPOCH FROM S.stats_reset)::bigint, 0),
+			@checksum_failures@, @checksum_last_failure@,
+			S.session_time, S.active_time, S.idle_in_transaction_time,
+			S.sessions, S.sessions_abandoned, S.sessions_fatal, S.sessions_killed
 		  FROM pg_database AS D JOIN pg_stat_database AS S
 			ON D.oid = S.datid
 		  WHERE (NOT D.datistemplate) @only@
@@ -1288,6 +1291,25 @@ func (c *collector) getDatabases(fillSize, onlyListed bool, dbList []string) {
 	}
 	q = strings.Replace(q, "@only@", onlyClause, 1)
 
+	// adjust query for older versions
+	if c.version < pgv12 { // checksum_failures and checksum_last_failure only in pg >= 12
+		q = strings.Replace(q, `@checksum_failures@`, `0`, 1)
+		q = strings.Replace(q, `@checksum_last_failure@`, `0`, 1)
+	} else {
+		q = strings.Replace(q, `@checksum_failures@`, `COALESCE(S.checksum_failures, 0)`, 1)
+		q = strings.Replace(q, `@checksum_last_failure@`, `COALESCE(EXTRACT(EPOCH from S.checksum_last_failure)::bigint, 0)`, 1)
+	}
+	if c.version < pgv14 {
+		// these columns only in pg >= 14
+		q = strings.Replace(q, `S.session_time`, `0`, 1)
+		q = strings.Replace(q, `S.active_time`, `0`, 1)
+		q = strings.Replace(q, `S.idle_in_transaction_time`, `0`, 1)
+		q = strings.Replace(q, `S.sessions`, `0`, 1)
+		q = strings.Replace(q, `S.sessions_abandoned`, `0`, 1)
+		q = strings.Replace(q, `S.sessions_fatal`, `0`, 1)
+		q = strings.Replace(q, `S.sessions_killed`, `0`, 1)
+	}
+
 	// do the query
 	rows, err := c.db.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -1303,7 +1325,10 @@ func (c *collector) getDatabases(fillSize, onlyListed bool, dbList []string) {
 			&d.XactRollback, &d.BlksRead, &d.BlksHit, &d.TupReturned,
 			&d.TupFetched, &d.TupInserted, &d.TupUpdated, &d.TupDeleted,
 			&d.Conflicts, &d.TempFiles, &d.TempBytes, &d.Deadlocks,
-			&d.BlkReadTime, &d.BlkWriteTime, &d.StatsReset); err != nil {
+			&d.BlkReadTime, &d.BlkWriteTime, &d.StatsReset, &d.ChecksumFailures,
+			&d.ChecksumLastFailure, &d.SessionTime, &d.ActiveTime,
+			&d.IdleInTxTime, &d.Sessions, &d.SessionsAbandoned,
+			&d.SessionsFatal, &d.SessionsKilled); err != nil {
 			log.Fatalf("pg_stat_database query failed: %v", err)
 		}
 		d.Size = -1 // will be filled in later if asked for
