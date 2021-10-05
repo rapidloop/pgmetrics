@@ -381,6 +381,8 @@ type Table struct {
 	PartitionCV     string `json:"partition_cv"` // partition constraint value
 	// following fields present only in schema 1.7 and later
 	ACL string `json:"acl,omitempty"`
+	// following fields present only in schema 1.11 and later
+	NInsSinceVacuum int64 `json:"n_ins_since_vacuum,omitempty"` // pg >= v13
 }
 
 type Index struct {

@@ -1415,7 +1415,8 @@ func (c *collector) getTables(fillSize bool) {
 			COALESCE(IO.toast_blks_read, 0), COALESCE(IO.toast_blks_hit, 0),
 			COALESCE(IO.tidx_blks_read, 0), COALESCE(IO.tidx_blks_hit, 0),
 			C.relkind, C.relpersistence, C.relnatts, age(C.relfrozenxid),
-			C.relispartition, C.reltablespace, COALESCE(array_to_string(C.relacl, E'\n'), '')
+			C.relispartition, C.reltablespace, COALESCE(array_to_string(C.relacl, E'\n'), ''),
+			S.n_ins_since_vacuum
 		  FROM pg_stat_user_tables AS S
 			JOIN pg_statio_user_tables AS IO
 			ON S.relid = IO.relid
@@ -1427,6 +1428,9 @@ func (c *collector) getTables(fillSize bool) {
 	}
 	if c.version < pgv10 { // relispartition only in v10+
 		q = strings.Replace(q, "C.relispartition", "false", 1)
+	}
+	if c.version < pgv13 { // n_ins_since_vacuum only in pg >= 13
+		q = strings.Replace(q, "S.n_ins_since_vacuum", "0", 1)
 	}
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
@@ -1447,7 +1451,7 @@ func (c *collector) getTables(fillSize bool) {
 			&t.HeapBlksRead, &t.HeapBlksHit, &t.IdxBlksRead, &t.IdxBlksHit,
 			&t.ToastBlksRead, &t.ToastBlksHit, &t.TidxBlksRead, &t.TidxBlksHit,
 			&t.RelKind, &t.RelPersistence, &t.RelNAtts, &t.AgeRelFrozenXid,
-			&t.RelIsPartition, &tblspcOID, &t.ACL); err != nil {
+			&t.RelIsPartition, &tblspcOID, &t.ACL, &t.NInsSinceVacuum); err != nil {
 			log.Fatalf("pg_stat(io)_user_tables query failed: %v", err)
 		}
 		t.Size = -1  // will be filled in later if asked for
