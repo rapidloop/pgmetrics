@@ -152,6 +152,11 @@ type Model struct {
 
 	// citus-related information, per db
 	Citus map[string]*Citus `json:"citus,omitempty"`
+
+	// following fields are present only in schema 1.11 and later
+
+	// WAL activity info, from pg_stat_wal, pg >= v14
+	WAL *WAL `json:"wal,omitempty"`
 }
 
 // DatabaseByOID iterates over the databases in the model and returns the reference
@@ -772,4 +777,18 @@ type CitusLock struct {
 	BlockingNodeName string `json:"blocking_node_name"`
 	WaitingNodePort  int    `json:"waiting_node_port"`
 	BlockingNodePort int    `json:"blocking_node_port"`
+}
+
+// WAL represents a single row from pg_stat_wal. Added in schema 1.11.
+// pg_stat_wal is available only in pg >= v14.
+type WAL struct {
+	Records     int64   `json:"records"`
+	FPI         int64   `json:"fpi"`
+	Bytes       int64   `json:"bytes"`
+	BuffersFull int64   `json:"buffers_full"`
+	Write       int64   `json:"write"`
+	Sync        int64   `json:"sync"`
+	WriteTime   float64 `json:"write_time"` // in milliseconds
+	SyncTime    float64 `json:"sync_time"`  // in milliseconds
+	StatsReset  int64   `json:"stats_reset"`
 }

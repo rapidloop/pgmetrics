@@ -465,6 +465,10 @@ func (c *collector) collectCluster(o CollectConfig) {
 
 	c.getLocks()
 
+	if c.version >= pgv14 {
+		c.getWAL()
+	}
+
 	if !arrayHas(o.Omit, "log") && c.local {
 		c.getLogInfo()
 	}
@@ -2376,6 +2380,27 @@ func (c *collector) getBloat() {
 	if err := rows.Err(); err != nil {
 		log.Fatalf("bloat query failed: %v", err)
 	}
+}
+
+func (c *collector) getWAL() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	// pg_stat_wal has only 1 row
+	q := `SELECT wal_records, wal_fpi, wal_bytes, wal_buffers_full, wal_write,
+			     wal_sync, wal_write_time, wal_sync_time,
+			     COALESCE(EXTRACT(EPOCH FROM stats_reset)::bigint, 0)
+		  FROM   pg_stat_wal
+		  LIMIT  1`
+
+	var w pgmetrics.WAL
+	err := c.db.QueryRowContext(ctx, q).Scan(&w.Records, &w.FPI, &w.Bytes,
+		&w.BuffersFull, &w.Write, &w.Sync, &w.WriteTime, &w.SyncTime,
+		&w.StatsReset)
+	if err != nil {
+		log.Fatalf("pg_stat_wal query failed: %v", err)
+	}
+	c.result.WAL = &w
 }
 
 //------------------------------------------------------------------------------
