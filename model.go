@@ -253,6 +253,8 @@ type Backend struct {
 	BackendXid      int    `json:"backend_xid"`
 	BackendXmin     int    `json:"backend_xmin"`
 	Query           string `json:"query"`
+	// following fields present only in schema 1.11 and later
+	QueryID int64 `json:"query_id,omitempty"` // >= pg14
 }
 
 type ReplicationSlot struct {

@@ -1115,8 +1115,14 @@ func (c *collector) getActivityv96() {
 			COALESCE(EXTRACT(EPOCH FROM state_change)::bigint, 0),
 			COALESCE(wait_event_type, ''), COALESCE(wait_event, ''),
 			COALESCE(state, ''), COALESCE(backend_xid, ''),
-			COALESCE(backend_xmin, ''), LEFT(COALESCE(query, ''), $1)
+			COALESCE(backend_xmin, ''), LEFT(COALESCE(query, ''), $1),
+			@queryid@
 		  FROM pg_stat_activity`
+	if c.version >= pgv14 { // query_id only in pg >= 14
+		q = strings.Replace(q, `@queryid@`, `COALESCE(query_id, 0)`, 1)
+	} else {
+		q = strings.Replace(q, `@queryid@`, `0`, 1)
+	}
 	if c.version >= pgv10 {
 		q += " WHERE backend_type='client backend'"
 	}
@@ -1132,7 +1138,7 @@ func (c *collector) getActivityv96() {
 		if err := rows.Scan(&b.DBName, &b.RoleName, &b.ApplicationName,
 			&b.PID, &b.ClientAddr, &b.BackendStart, &b.XactStart, &b.QueryStart,
 			&b.StateChange, &b.WaitEventType, &b.WaitEvent, &b.State,
-			&b.BackendXid, &b.BackendXmin, &b.Query); err != nil {
+			&b.BackendXid, &b.BackendXmin, &b.Query, &b.QueryID); err != nil {
 			log.Fatalf("pg_stat_activity query failed: %v", err)
 		}
 		c.result.Backends = append(c.result.Backends, b)
