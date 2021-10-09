@@ -488,7 +488,9 @@ func (c *collector) collectDatabase(o CollectConfig) {
 	}
 	if !arrayHas(o.Omit, "tables") && !arrayHas(o.Omit, "indexes") {
 		c.getIndexes(!o.NoSizes)
-		c.getIndexDef()
+		if !arrayHas(o.Omit, "indexdefs") {
+			c.getIndexDef()
+		}
 	}
 	if !arrayHas(o.Omit, "sequences") {
 		c.getSequences()
