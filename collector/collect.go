@@ -2438,23 +2438,39 @@ func (c *collector) getPBPools() {
 
 	rows, err := c.db.QueryContext(ctx, "SHOW POOLS")
 	if err != nil {
-		log.Fatalf("show pools query failed: %v", err)
+		log.Fatalf("pgbouncer: show pools query failed: %v", err)
 	}
 	defer rows.Close()
+
+	var ncols int
+	if cols, err := rows.Columns(); err == nil {
+		ncols = len(cols)
+	}
 
 	for rows.Next() {
 		var pool pgmetrics.PgBouncerPool
 		var maxWaitUs float64
-		if err := rows.Scan(&pool.Database, &pool.UserName, &pool.ClActive,
-			&pool.ClWaiting, &pool.SvActive, &pool.SvIdle, &pool.SvUsed,
-			&pool.SvTested, &pool.SvLogin, &pool.MaxWait, &maxWaitUs, &pool.Mode); err != nil {
-			log.Fatalf("show pools query failed: %v", err)
+		if ncols == 12 {
+			err = rows.Scan(&pool.Database, &pool.UserName, &pool.ClActive,
+				&pool.ClWaiting, &pool.SvActive, &pool.SvIdle, &pool.SvUsed,
+				&pool.SvTested, &pool.SvLogin, &pool.MaxWait, &maxWaitUs,
+				&pool.Mode)
+		} else if ncols == 13 {
+			err = rows.Scan(&pool.Database, &pool.UserName, &pool.ClActive,
+				&pool.ClWaiting, &pool.ClCancelReq, &pool.SvActive, &pool.SvIdle,
+				&pool.SvUsed, &pool.SvTested, &pool.SvLogin, &pool.MaxWait,
+				&maxWaitUs, &pool.Mode)
+		} else {
+			log.Fatalf("pgbouncer: unsupported number of columns %d in 'SHOW POOLS'", ncols)
+		}
+		if err != nil {
+			log.Fatalf("pgbouncer: show pools query failed: %v", err)
 		}
 		pool.MaxWait += maxWaitUs / 1e6
 		c.result.PgBouncer.Pools = append(c.result.PgBouncer.Pools, pool)
 	}
 	if err := rows.Err(); err != nil {
-		log.Fatalf("show pools query failed: %v", err)
+		log.Fatalf("pgbouncer: show pools query failed: %v", err)
 	}
 }
 
@@ -2484,7 +2500,7 @@ func (c *collector) getPBServers() {
 
 	rows, err := c.db.QueryContext(ctx, "SHOW SERVERS")
 	if err != nil {
-		log.Fatalf("show servers query failed: %v", err)
+		log.Fatalf("pgbouncer: show servers query failed: %v", err)
 	}
 	defer rows.Close()
 
@@ -2500,13 +2516,15 @@ func (c *collector) getPBServers() {
 		if ncols == 16 {
 			err = rows.Scan(&s[0], &s[1], &s[2], &state, &s[3], &s[4], &s[5],
 				&s[6], &s[7], &s[8], &wait, &waitUs, &s[9], &s[10], &s[11], &s[12])
-		} else {
+		} else if ncols == 17 {
 			err = rows.Scan(&s[0], &s[1], &s[2], &state, &s[3], &s[4], &s[5],
 				&s[6], &s[7], &s[8], &wait, &waitUs, &s[9], &s[10], &s[11], &s[12],
 				&s[13])
+		} else {
+			log.Fatalf("pgbouncer: unsupported number of columns %d in 'SHOW SERVERS'", ncols)
 		}
 		if err != nil {
-			log.Fatalf("show servers query failed: %v", err)
+			log.Fatalf("pgbouncer: show servers query failed: %v", err)
 		}
 		wait += waitUs / 1e6 // convert usec -> sec
 		if wait > c.result.PgBouncer.SCMaxWait {
@@ -2522,7 +2540,7 @@ func (c *collector) getPBServers() {
 		}
 	}
 	if err := rows.Err(); err != nil {
-		log.Fatalf("show servers query failed: %v", err)
+		log.Fatalf("pgbouncer: show servers query failed: %v", err)
 	}
 }
 
@@ -2552,7 +2570,7 @@ func (c *collector) getPBClients() {
 
 	rows, err := c.db.QueryContext(ctx, "SHOW CLIENTS")
 	if err != nil {
-		log.Fatalf("show clients query failed: %v", err)
+		log.Fatalf("pgbouncer: show clients query failed: %v", err)
 	}
 	defer rows.Close()
 
@@ -2569,13 +2587,15 @@ func (c *collector) getPBClients() {
 		if ncols == 16 {
 			err = rows.Scan(&s[0], &s[1], &s[2], &state, &s[3], &s[4], &s[5],
 				&s[6], &s[7], &s[8], &wait, &waitUs, &s[9], &s[10], &s[11], &s[12])
-		} else {
+		} else if ncols == 17 {
 			err = rows.Scan(&s[0], &s[1], &s[2], &state, &s[3], &s[4], &s[5],
 				&s[6], &s[7], &s[8], &wait, &waitUs, &s[9], &s[10], &s[11], &s[12],
 				&s[13])
+		} else {
+			log.Fatalf("pgbouncer: unsupported number of columns %d in 'SHOW CLIENTS'", ncols)
 		}
 		if err != nil {
-			log.Fatalf("show clients query failed: %v", err)
+			log.Fatalf("pgbouncer: show clients query failed: %v", err)
 		}
 		wait += waitUs / 1e6 // convert usec -> sec
 		switch state {
@@ -2594,7 +2614,7 @@ func (c *collector) getPBClients() {
 		}
 	}
 	if err := rows.Err(); err != nil {
-		log.Fatalf("show clients query failed: %v", err)
+		log.Fatalf("pgbouncer: show clients query failed: %v", err)
 	}
 	if c.result.PgBouncer.CCWaiting > 0 {
 		c.result.PgBouncer.CCAvgWait = totalWait / float64(c.result.PgBouncer.CCWaiting)
@@ -2625,7 +2645,7 @@ func (c *collector) getPBStats() {
 
 	rows, err := c.db.QueryContext(ctx, "SHOW STATS")
 	if err != nil {
-		log.Fatalf("show stats query failed: %v", err)
+		log.Fatalf("pgbouncer: show stats query failed: %v", err)
 	}
 	defer rows.Close()
 
@@ -2636,7 +2656,7 @@ func (c *collector) getPBStats() {
 			&stat.TotalQueryTime, &stat.TotalWaitTime, &stat.AvgXactCount,
 			&stat.AvgQueryCount, &stat.AvgReceived, &stat.AvgSent, &stat.AvgXactTime,
 			&stat.AvgQueryTime, &stat.AvgWaitTime); err != nil {
-			log.Fatalf("show stats query failed: %v", err)
+			log.Fatalf("pgbouncer: show stats query failed: %v", err)
 		}
 		// convert usec -> sec
 		stat.TotalXactTime /= 1e6
@@ -2648,7 +2668,7 @@ func (c *collector) getPBStats() {
 		c.result.PgBouncer.Stats = append(c.result.PgBouncer.Stats, stat)
 	}
 	if err := rows.Err(); err != nil {
-		log.Fatalf("show stats query failed: %v", err)
+		log.Fatalf("pgbouncer: show stats query failed: %v", err)
 	}
 }
 
@@ -2673,17 +2693,33 @@ func (c *collector) getPBDatabases() {
 
 	rows, err := c.db.QueryContext(ctx, "SHOW DATABASES")
 	if err != nil {
-		log.Fatalf("show databases query failed: %v", err)
+		log.Fatalf("pgbouncer: show databases query failed: %v", err)
 	}
 	defer rows.Close()
 
+	var ncols int
+	if cols, err := rows.Columns(); err == nil {
+		ncols = len(cols)
+	}
+
 	for rows.Next() {
 		var db pgmetrics.PgBouncerDatabase
-		var host, user, s1, s2, s3 sql.NullString
+		var host, user sql.NullString
+		var s [4]sql.NullString
 		var paused, disabled int
-		if err := rows.Scan(&db.Database, &host, &db.Port, &db.SourceDatabase,
-			&user, &s1, &s2, &s3, &db.MaxConn, &db.CurrConn, &paused, &disabled); err != nil {
-			log.Fatalf("show databases query failed: %v", err)
+		if ncols == 12 {
+			err = rows.Scan(&db.Database, &host, &db.Port, &db.SourceDatabase,
+				&user, &s[0], &s[1], &s[2], &db.MaxConn, &db.CurrConn, &paused,
+				&disabled)
+		} else if ncols == 13 {
+			err = rows.Scan(&db.Database, &host, &db.Port, &db.SourceDatabase,
+				&user, &s[0], &s[1], &s[2], &s[3], &db.MaxConn, &db.CurrConn,
+				&paused, &disabled)
+		} else {
+			log.Fatalf("pgbouncer: unsupported number of columns %d in 'SHOW DATABASES'", ncols)
+		}
+		if err != nil {
+			log.Fatalf("pgbouncer: show databases query failed: %v", err)
 		}
 		db.Host = host.String
 		db.Paused = paused == 1
@@ -2692,7 +2728,7 @@ func (c *collector) getPBDatabases() {
 		c.result.PgBouncer.Databases = append(c.result.PgBouncer.Databases, db)
 	}
 	if err := rows.Err(); err != nil {
-		log.Fatalf("show databases query failed: %v", err)
+		log.Fatalf("pgbouncer: show databases query failed: %v", err)
 	}
 }
 

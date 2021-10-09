@@ -650,6 +650,9 @@ type PgBouncerPool struct {
 	SvLogin   int     `json:"sv_login"`
 	MaxWait   float64 `json:"maxwait"` // seconds
 	Mode      string  `json:"pool_mode"`
+
+	// following fields present only in schema 1.11 and later
+	ClCancelReq int `json:"cl_cancel_req,omitempty"` // only in pgbouncer >= v1.16.0
 }
 
 // PgBouncerDatabase contains information about one database of PgBouncer
