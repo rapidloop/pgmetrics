@@ -601,6 +601,10 @@ func (c *collector) getSettings() {
 			pending_restart
 		  FROM pg_settings
 		  ORDER BY name ASC`
+	if c.version < pgv95 { // pending_restart was added in pg9.5
+		q = strings.Replace(q, "pending_restart", "FALSE", 1)
+	}
+
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
 		log.Fatalf("pg_settings query failed: %v", err)
