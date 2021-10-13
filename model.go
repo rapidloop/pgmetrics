@@ -18,7 +18,7 @@ package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
-//    1.11 -
+//    1.11 - Postgres 14, PgBouncer 1.16, other attributes
 //    1.10 - New fields in pg_stat_statements for Postgres 13
 //    1.9 - Postgres 13, Citus support
 //    1.8 - AWS RDS/EnhancedMonitoring metrics, index defn,
