@@ -91,6 +91,7 @@ type CollectConfig struct {
 	LogSpan         uint
 	RDSDBIdentifier string
 	AllDBs          bool
+	AzureResourceID string
 
 	// connection
 	Host     string
@@ -218,6 +219,11 @@ func Collect(o CollectConfig, dbnames []string) *pgmetrics.Model {
 	// collect from RDS if database id is specified
 	if len(o.RDSDBIdentifier) > 0 {
 		c.collectFromRDS(o)
+	}
+
+	// collect from Azure if resource id is specified
+	if len(o.AzureResourceID) > 0 {
+		c.collectFromAzure(o)
 	}
 
 	return &c.result
@@ -2901,6 +2907,19 @@ func (c *collector) collectFromRDS(o CollectConfig) {
 		err = ac.collectLogs(dbid, start, func(lines []byte) {
 			c.processLogBuf(start, lines)
 		})
+	}
+}
+
+func (c *collector) collectFromAzure(o CollectConfig) {
+	timeout := time.Duration(o.TimeoutSec) * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	var azure pgmetrics.Azure
+	if err := collectAzure(ctx, o.AzureResourceID, &azure); err != nil {
+		log.Printf("warning: failed to collect from Azure: %v", err)
+	} else {
+		c.result.Azure = &azure
 	}
 }
 

@@ -18,6 +18,7 @@ package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
+//    1.12 - Azure metrics
 //    1.11 - Postgres 14, PgBouncer 1.16, other attributes
 //    1.10 - New fields in pg_stat_statements for Postgres 13
 //    1.9 - Postgres 13, Citus support
@@ -31,7 +32,7 @@ package pgmetrics
 //    1.2 - more table and index attributes
 //    1.1 - added NotificationQueueUsage and Statements
 //    1.0 - initial release
-const ModelSchemaVersion = "1.11"
+const ModelSchemaVersion = "1.12"
 
 // Model contains the entire information collected by a single run of
 // pgmetrics. It can be converted to and from json without loss of
@@ -157,6 +158,11 @@ type Model struct {
 
 	// WAL activity info, from pg_stat_wal, pg >= v14
 	WAL *WAL `json:"wal,omitempty"`
+
+	// following fields are present only in schema 1.12 and later
+
+	// metrics from Azure PostgreSQL, via Azure Monitor APIs
+	Azure *Azure `json:"azure,omitempty"`
 }
 
 // DatabaseByOID iterates over the databases in the model and returns the reference
@@ -794,4 +800,13 @@ type WAL struct {
 	WriteTime   float64 `json:"write_time"` // in milliseconds
 	SyncTime    float64 `json:"sync_time"`  // in milliseconds
 	StatsReset  int64   `json:"stats_reset"`
+}
+
+// Azure represents metrics and information collected from Azure PostgreSQL
+// via Azure Monitor APIs. Added in schema 1.12.
+type Azure struct {
+	ResourceName   string             `json:"resource_name"`
+	ResourceType   string             `json:"resource_type"`
+	ResourceRegion string             `json:"resource_region"`
+	Metrics        map[string]float64 `json:"metrics"`
 }

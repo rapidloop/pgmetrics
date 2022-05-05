@@ -68,6 +68,7 @@ Collection options:
       --log-dir                read all the PostgreSQL log files in this directory
       --log-span=MINS          examine the last MINS minutes of logs (default: 5)
       --aws-rds-dbid           AWS RDS/Aurora database instance identifier
+      --az-resource            Azure resource ID
 
 Output options:
   -f, --format=FORMAT          output format; "human", "json" or "csv" (default: "human")
@@ -213,6 +214,7 @@ func (o *options) parse() (args []string) {
 	s.StringVarLong(&o.CollectConfig.LogDir, "log-dir", 0, "")
 	s.UintVarLong(&o.CollectConfig.LogSpan, "log-span", 0, "")
 	s.StringVarLong(&o.CollectConfig.RDSDBIdentifier, "aws-rds-dbid", 0, "")
+	s.StringVarLong(&o.CollectConfig.AzureResourceID, "az-resource", 0, "")
 	// output
 	s.StringVarLong(&o.format, "format", 'f', "")
 	s.StringVarLong(&o.output, "output", 'o', "")
