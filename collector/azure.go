@@ -8,9 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/profiles/2019-03-01/resources/mgmt/insights"
-	"github.com/Azure/go-autorest/autorest/azure"
-	"github.com/Azure/go-autorest/autorest/azure/auth"
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/monitor/armmonitor"
 	"github.com/rapidloop/pgmetrics"
 )
 
@@ -29,21 +28,23 @@ func collectAzure(ctx context.Context, resourceID string, out *pgmetrics.Azure) 
 	if len(m) != 5 {
 		return errors.New("invalid resource ID")
 	}
-	azSubID := m[1]
 	out.ResourceType = "Microsoft.DBforPostgreSQL/" + m[3]
 	out.ResourceName = m[4]
 	out.Metrics = make(map[string]float64)
 
-	// setup authorizer
-	authorizer, err := auth.NewAuthorizerFromEnvironmentWithResource(azure.PublicCloud.ResourceManagerEndpoint)
-	if err != nil && err.Error() == "MSI not available" {
-		authorizer, err = auth.NewAuthorizerFromCLIWithResource(azure.PublicCloud.ResourceManagerEndpoint)
-	}
+	// get credentials
+	cred, err := azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
-		return fmt.Errorf("failed to setup azure authorizer: %v", err)
+		return fmt.Errorf("failed to get credentials: %v", err)
 	}
 
-	// parameters for metrics query
+	// create a client
+	client, err := armmonitor.NewMetricsClient(cred, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create client: %v", err)
+	}
+
+	// make parameters for query
 	to := time.Now().In(time.UTC)
 	from := to.Add(-5 * time.Minute)
 	timeRange := from.Format(time.RFC3339) + "/" + to.Format(time.RFC3339)
@@ -62,21 +63,16 @@ func collectAzure(ctx context.Context, resourceID string, out *pgmetrics.Azure) 
 		metricNames = citusMetrics
 	}
 
-	// query using a client
-	client := insights.NewMetricsClient(azSubID)
-	client.Authorizer = authorizer
+	// actually query
 	resp, err := client.List(
 		ctx,
 		resourceID,
-		timeRange,
-		&interval,
-		metricNames,
-		"",            // aggregation
-		&top,          // top
-		"",            // order by
-		"",            // filter
-		insights.Data, // result type
-		"",            // metric namespace
+		&armmonitor.MetricsClientListOptions{
+			Interval:    &interval,
+			Metricnames: &metricNames,
+			Timespan:    &timeRange,
+			Top:         &top,
+		},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to query Azure API: %v", err)
@@ -84,37 +80,35 @@ func collectAzure(ctx context.Context, resourceID string, out *pgmetrics.Azure) 
 
 	// parse response
 	out.ResourceRegion = *resp.Resourceregion
-	if resp.Value != nil {
-		for _, m := range *resp.Value {
-			if m.ID == nil || *m.ID == "" {
-				// log.Printf("warning: ignoring metric with no id: %v", m)
+	for _, m := range resp.Value {
+		if m.ID == nil || *m.ID == "" {
+			// log.Printf("warning: ignoring metric with no id: %v", m)
+			continue
+		}
+		if len(m.Timeseries) == 0 {
+			continue // no timeseries data, ignore quietly
+		}
+		ts := m.Timeseries[len(m.Timeseries)-1]
+		if len(ts.Data) == 0 {
+			continue // no timeseries data, ignore quietly
+		}
+		name := azGetMetricName(*m.ID)
+		for i := len(ts.Data) - 1; i >= 0; i-- {
+			t := ts.Data[i]
+			if t.TimeStamp == nil {
 				continue
 			}
-			if m.Timeseries == nil || len(*m.Timeseries) == 0 {
-				continue // no timeseries data, ignore quietly
+			if t.Average != nil {
+				out.Metrics[name] = *t.Average
+				break
 			}
-			ts := (*m.Timeseries)[len(*m.Timeseries)-1]
-			if ts.Data == nil {
-				continue // no timeseries data, ignore quietly
+			if t.Total != nil {
+				out.Metrics[name] = *t.Total
+				break
 			}
-			name := azGetMetricName(*m.ID)
-			for i := len(*ts.Data) - 1; i >= 0; i-- {
-				t := (*ts.Data)[i]
-				if t.TimeStamp == nil {
-					continue
-				}
-				if t.Average != nil {
-					out.Metrics[name] = *t.Average
-					break
-				}
-				if t.Total != nil {
-					out.Metrics[name] = *t.Total
-					break
-				}
-				if t.Maximum != nil {
-					out.Metrics[name] = *t.Maximum
-					break
-				}
+			if t.Maximum != nil {
+				out.Metrics[name] = *t.Maximum
+				break
 			}
 		}
 	}
