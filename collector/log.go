@@ -123,7 +123,7 @@ func (c *collector) processLogBuf(start time.Time, bigbuf []byte) (err error) {
 		// match again for submatches, can't do this in one go :-(
 		// TODO: no longer the case, use FindSubmatchIndex
 		match := c.rxPrefix.FindSubmatch(bigbuf[pos[0]:])
-		t, user, db, err := getMatchData(match, c.rxPrefix)
+		t, user, db, qid, err := getMatchData(match, c.rxPrefix)
 		if err != nil {
 			return nil
 		}
@@ -149,7 +149,7 @@ func (c *collector) processLogBuf(start time.Time, bigbuf []byte) (err error) {
 				level = match[1]
 				line = line[len(match[0]):]
 			}
-			c.processLogLine(count == 0, t, user, db, level, line)
+			c.processLogLine(count == 0, t, user, db, qid, level, line)
 			count++
 		}
 	}
@@ -183,6 +183,9 @@ func (c *collector) processLogBuf(start time.Time, bigbuf []byte) (err error) {
 // 21. character count of the error position therein
 // 22. location of the error in the PostgreSQL source code (if log_error_verbosity is set to verbose)
 // 23. application name
+// 24. backend type (>= pg13)
+// 25. leader pid (>= pg14)
+// 26. query id (>= pg14)
 
 func (c *collector) readLogLinesCSV(filename string) error {
 	f, err := os.Open(filename)
@@ -210,10 +213,15 @@ func (c *collector) readLogLinesCSV(filename string) error {
 		if err != nil || t.Before(start) {
 			continue
 		}
+		var qid int64
+		if len(record) >= 26 {
+			qid, _ = strconv.ParseInt(record[25], 10, 64)
+		}
 		c.currLog = logEntry{
 			t:     t,
 			user:  record[1],
 			db:    record[2],
+			qid:   qid,
 			level: record[11],
 			line:  record[13],
 		}
@@ -230,6 +238,7 @@ type logEntry struct {
 	t     time.Time
 	user  string
 	db    string
+	qid   int64
 	level string
 	line  string
 	extra []logEntryExtra
@@ -249,8 +258,10 @@ type logEntryExtra struct {
 	line  string
 }
 
-func (c *collector) processLogLine(first bool, t time.Time, user, db, level, line string) {
-	//log.Printf("debug:got log line [%s] [%s] [%s] [%s]", user, db, level, line)
+func (c *collector) processLogLine(first bool, t time.Time, user, db string,
+	qid int64, level, line string) {
+
+	//log.Printf("debug:got log line [%s] [%s] [%d] [%s] [%s]", user, db, qid, level, line)
 	// is this the start of a new entry?
 	start := false
 	for _, s := range severities {
@@ -265,7 +276,15 @@ func (c *collector) processLogLine(first bool, t time.Time, user, db, level, lin
 			c.processLogEntry()
 		}
 		// start new entry
-		c.currLog = logEntry{t: t, user: user, db: db, level: level, line: line, extra: nil}
+		c.currLog = logEntry{
+			t:     t,
+			user:  user,
+			db:    db,
+			qid:   qid,
+			level: level,
+			line:  line,
+			extra: nil,
+		}
 	} else {
 		// add to extra
 		c.currLog.extra = append(c.currLog.extra, logEntryExtra{level: level, line: line})
@@ -285,7 +304,13 @@ func (c *collector) processLogEntry() {
 
 func (c *collector) processAE(sm []string) {
 	e := c.currLog
-	p := pgmetrics.Plan{Database: e.db, UserName: e.user, Format: "text", At: e.t.Unix()}
+	p := pgmetrics.Plan{
+		Database: e.db,
+		UserName: e.user,
+		Format:   "text",
+		At:       e.t.Unix(),
+		QueryID:  e.qid,
+	}
 	switch {
 	case len(sm[1]) > 0:
 		p.Format = "json"
@@ -353,7 +378,7 @@ func (c *collector) processDeadlock() {
 
 //------------------------------------------------------------------------------
 
-func getMatchData(match [][]byte, prefix *regexp.Regexp) (t time.Time, user, db string, err error) {
+func getMatchData(match [][]byte, prefix *regexp.Regexp) (t time.Time, user, db string, qid int64, err error) {
 	idxT, idxM, idxN := -1, -1, -1
 	for i, s := range prefix.SubexpNames() {
 		switch s {
@@ -367,6 +392,8 @@ func getMatchData(match [][]byte, prefix *regexp.Regexp) (t time.Time, user, db 
 			user = string(match[i])
 		case "d":
 			db = string(match[i])
+		case "Q":
+			qid, _ = strconv.ParseInt(string(match[i]), 10, 64)
 		}
 	}
 	if idxM != -1 && len(match[idxM]) > 0 {
@@ -472,6 +499,8 @@ func compilePrefix(prefix string) (*regexp.Regexp, error) {
 			if !hasq {
 				r += `?`
 			}
+		case 'Q': // query identifier
+			r += `(?P<Q>-?\d+)`
 		case 'q': // rest are optional
 			r += `(?:` // needs termination
 			hasq = true

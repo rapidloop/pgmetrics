@@ -18,7 +18,7 @@ package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
-//    1.12 - Azure metrics
+//    1.12 - Azure metrics, queryid in plan
 //    1.11 - Postgres 14, PgBouncer 1.16, other attributes
 //    1.10 - New fields in pg_stat_statements for Postgres 13
 //    1.9 - Postgres 13, Citus support
@@ -703,6 +703,9 @@ type Plan struct {
 	At       int64  `json:"at"`      // time when plan was logged, as seconds since epoch
 	Query    string `json:"query"`   // the sql query
 	Plan     string `json:"plan"`    // the plan as a string
+
+	// following fields present only in schema 1.12 and later
+	QueryID int64 `json:"queryid,omitempty"` // query id
 }
 
 // AutoVacuum contains information about a single autovacuum run.
