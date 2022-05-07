@@ -513,7 +513,9 @@ func (c *collector) collectDatabase(o CollectConfig) {
 	if !arrayHas(o.Omit, "statements") {
 		c.getStatements(currdb)
 	}
-	c.getBloat()
+	if !arrayHas(o.Omit, "bloat") {
+		c.getBloat()
+	}
 
 	// logical replication, added schema v1.2
 	if c.version >= pgv10 {
