@@ -30,7 +30,7 @@ import (
 	"github.com/pborman/getopt"
 	"github.com/rapidloop/pgmetrics"
 	"github.com/rapidloop/pgmetrics/collector"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 )
 
 const usage = `pgmetrics collects PostgreSQL information and metrics.
@@ -348,7 +348,7 @@ func process(result *pgmetrics.Model, o options, args []string) {
 		}
 	}
 	usePager := o.output == "" && !o.nopager && pager != "" &&
-		terminal.IsTerminal(int(os.Stdout.Fd()))
+		term.IsTerminal(int(os.Stdout.Fd()))
 	if usePager {
 		cmd := exec.Command(pager)
 		pagerStdin, err := cmd.StdinPipe()

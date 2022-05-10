@@ -10,8 +10,9 @@ require (
 	github.com/rapidloop/pq v1.1.1
 	github.com/xdg-go/stringprep v1.0.0 // indirect
 	github.com/xdg/stringprep v1.0.0 // indirect
-	golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
+	golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3 // indirect
 	golang.org/x/mod v0.5.1
+	golang.org/x/term v0.0.0-20220411215600-e5f449aeb171
 )
 
 go 1.13
