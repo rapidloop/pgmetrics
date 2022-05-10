@@ -122,6 +122,12 @@ more details about these refer to the AWS documentation.
   AWS_DEFAULT_REGION,  AWS_PROFILE,           AWS_DEFAULT_PROFILE,
   AWS_SDK_LOAD_CONFIG, AWS_SHARED_CREDENTIALS_FILE,
   AWS_CONFIG_FILE,     AWS_CA_BUNDLE
+
+The following Azure-related environment variables are understood. For
+more details about these refer to the Azure documentation.
+
+  AZURE_CLIENT_ID,   AZURE_TENANT_ID,   AZURE_CLIENT_SECRET,
+  AZURE_USERNAME,    AZURE_PASSWORD,    AZURE_CLIENT_CERTIFICATE_PATH
 `
 
 var version string // set during build
