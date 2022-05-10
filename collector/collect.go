@@ -34,6 +34,7 @@ import (
 
 	"github.com/rapidloop/pgmetrics"
 	"github.com/rapidloop/pq"
+	"golang.org/x/mod/semver"
 )
 
 // Postgres version constants
@@ -1860,19 +1861,23 @@ func (c *collector) getStatements(currdb string) {
 	}
 
 	// Try to fetch only if PSS extension is installed.
-	found := false
+	var version string
 	for _, e := range c.result.Extensions {
 		if e.Name == "pg_stat_statements" && e.DBName == currdb {
-			found = true
+			version = "v" + e.InstalledVersion
 			break
 		}
 	}
-	if !found {
+	if !semver.IsValid(version) {
 		return
 	}
 
-	if c.version >= pgv13 {
-		c.getStatementsv13(currdb)
+	// New columns in pss were added in pg v13 that shipped with pss v1.8.
+	// Support the case when we're connected to pg v13 with older versions
+	// of pss.
+
+	if semver.Compare(version, "v1.8") >= 0 { // is pss version >= v1.8?
+		c.getStatementsv13(currdb) // then also query the new columns
 	} else {
 		c.getStatementsPrev13(currdb)
 	}
