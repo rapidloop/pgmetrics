@@ -475,6 +475,19 @@ func (c *collector) collectCluster(o CollectConfig) {
 		c.getWAL()
 	}
 
+	// various pg_stat_progress_* views
+	if c.version >= pgv12 {
+		c.getProgressCluster()
+		c.getProgressCreateIndex()
+	}
+	if c.version >= pgv13 {
+		c.getProgressAnalyze()
+		c.getProgressBasebackup()
+	}
+	if c.version >= pgv14 {
+		c.getProgressCopy()
+	}
+
 	if !arrayHas(o.Omit, "log") && c.local {
 		c.getLogInfo()
 	}
@@ -2415,6 +2428,200 @@ func (c *collector) getWAL() {
 		log.Fatalf("pg_stat_wal query failed: %v", err)
 	}
 	c.result.WAL = &w
+}
+
+func (c *collector) getProgressAnalyze() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT pid, datname, relid::int, COALESCE(phase, ''),
+				 COALESCE(sample_blks_total, 0::bigint),
+				 COALESCE(sample_blks_scanned, 0::bigint),
+				 COALESCE(ext_stats_total, 0::bigint),
+				 COALESCE(ext_stats_computed, 0::bigint),
+				 COALESCE(child_tables_total, 0::bigint),
+				 COALESCE(child_tables_done, 0::bigint),
+				 COALESCE(current_child_table_relid::int, 0::int)
+		    FROM pg_stat_progress_analyze
+		ORDER BY pid ASC`
+
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		log.Printf("warning: pg_stat_progress_analyze query failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var out []pgmetrics.AnalyzeProgressBackend
+	for rows.Next() {
+		var r pgmetrics.AnalyzeProgressBackend
+		if err := rows.Scan(&r.PID, &r.DBName, &r.RelOID, &r.Phase,
+			&r.SampleBlocksTotal, &r.SampleBlocksScanned, &r.ExtStatsTotal,
+			&r.ExtStatsComputed, &r.ChildTablesTotal, &r.ChildTablesDone,
+			&r.CurrentChildTableRelOID); err != nil {
+			log.Fatalf("pg_stat_progress_analyze query scan failed: %v", err)
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_stat_progress_analyze query rows failed: %v", err)
+	}
+
+	c.result.AnalyzeProgress = out
+}
+
+func (c *collector) getProgressBasebackup() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT pid, COALESCE(phase, ''),
+				 COALESCE(backup_total, 0::bigint),
+				 COALESCE(backup_streamed, 0::bigint),
+				 COALESCE(tablespaces_total, 0::bigint),
+				 COALESCE(tablespaces_streamed, 0::bigint)
+		    FROM pg_stat_progress_basebackup
+		ORDER BY pid ASC`
+
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		log.Printf("warning: pg_stat_progress_basebackup query failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var out []pgmetrics.BasebackupProgressBackend
+	for rows.Next() {
+		var r pgmetrics.BasebackupProgressBackend
+		if err := rows.Scan(&r.PID, &r.Phase, &r.BackupTotal, &r.BackupStreamed,
+			&r.TablespacesTotal, &r.TablespacesStreamed); err != nil {
+			log.Fatalf("pg_stat_progress_basebackup query scan failed: %v", err)
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_stat_progress_basebackup query rows failed: %v", err)
+	}
+
+	c.result.BasebackupProgress = out
+}
+
+func (c *collector) getProgressCluster() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT pid, datname, relid::int, COALESCE(command, ''),
+				 COALESCE(phase, ''),
+				 COALESCE(cluster_index_relid::int, 0),
+				 COALESCE(heap_tuples_scanned, 0::bigint),
+				 COALESCE(heap_tuples_written, 0::bigint),
+				 COALESCE(heap_blks_total, 0::bigint),
+				 COALESCE(heap_blks_scanned, 0::bigint),
+				 COALESCE(index_rebuild_count::int, 0::int)
+		    FROM pg_stat_progress_cluster
+		ORDER BY pid ASC`
+
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		log.Printf("warning: pg_stat_progress_cluster query failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var out []pgmetrics.ClusterProgressBackend
+	for rows.Next() {
+		var r pgmetrics.ClusterProgressBackend
+		if err := rows.Scan(&r.PID, &r.DBName, &r.RelOID, &r.Command, &r.Phase,
+			&r.ClusterIndexOID, &r.HeapTuplesScanned, &r.HeapTuplesWritten,
+			&r.HeapBlksTotal, &r.HeapBlksScanned, &r.IndexRebuildCount); err != nil {
+			log.Fatalf("pg_stat_progress_cluster query scan failed: %v", err)
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_stat_progress_cluster query rows failed: %v", err)
+	}
+
+	c.result.ClusterProgress = out
+}
+
+func (c *collector) getProgressCopy() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT pid, datname, relid::int, COALESCE(command, ''),
+				 COALESCE(type, ''),
+				 COALESCE(bytes_processed, 0::bigint),
+				 COALESCE(bytes_total, 0::bigint),
+				 COALESCE(tuples_processed, 0::bigint),
+				 COALESCE(tuples_excluded, 0::bigint)
+		    FROM pg_stat_progress_copy
+		ORDER BY pid ASC`
+
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		log.Printf("warning: pg_stat_progress_copy query failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var out []pgmetrics.CopyProgressBackend
+	for rows.Next() {
+		var r pgmetrics.CopyProgressBackend
+		if err := rows.Scan(&r.PID, &r.DBName, &r.RelOID, &r.Command, &r.Type,
+			&r.BytesProcessed, &r.BytesTotal, &r.TuplesProcessed,
+			&r.TuplesExcluded); err != nil {
+			log.Fatalf("pg_stat_progress_copy query scan failed: %v", err)
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_stat_progress_copy query rows failed: %v", err)
+	}
+
+	c.result.CopyProgress = out
+}
+
+func (c *collector) getProgressCreateIndex() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT pid, datname, relid::int, index_relid::int, command, phase,
+				 COALESCE(lockers_total, 0::bigint),
+				 COALESCE(lockers_done, 0::bigint),
+				 COALESCE(current_locker_pid::int, 0::int),
+				 COALESCE(blocks_total, 0::bigint),
+				 COALESCE(blocks_done, 0::bigint),
+				 COALESCE(tuples_total, 0::bigint),
+				 COALESCE(tuples_done, 0::bigint),
+				 COALESCE(partitions_total, 0::bigint),
+				 COALESCE(partitions_done, 0::bigint)
+		    FROM pg_stat_progress_create_index
+		ORDER BY pid ASC`
+
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		log.Printf("warning: pg_stat_progress_create_index query failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var out []pgmetrics.CreateIndexProgressBackend
+	for rows.Next() {
+		var r pgmetrics.CreateIndexProgressBackend
+		if err := rows.Scan(&r.PID, &r.DBName, &r.TableOID, &r.IndexOID,
+			&r.Command, &r.Phase, &r.LockersTotal, &r.LockersDone,
+			&r.CurrentLockerPID, &r.BlocksTotal, &r.BlocksDone,
+			&r.TuplesTotal, &r.TuplesDone, &r.PartitionsTotal,
+			&r.PartitionsDone); err != nil {
+			log.Fatalf("pg_stat_progress_create_index query scan failed: %v", err)
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_stat_progress_create_index query rows failed: %v", err)
+	}
+
+	c.result.CreateIndexProgress = out
 }
 
 //------------------------------------------------------------------------------

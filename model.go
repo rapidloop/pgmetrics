@@ -18,7 +18,7 @@ package pgmetrics
 
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
-//    1.12 - Azure metrics, queryid in plan
+//    1.12 - Azure metrics, queryid in plan, progress views
 //    1.11 - Postgres 14, PgBouncer 1.16, other attributes
 //    1.10 - New fields in pg_stat_statements for Postgres 13
 //    1.9 - Postgres 13, Citus support
@@ -163,6 +163,13 @@ type Model struct {
 
 	// metrics from Azure PostgreSQL, via Azure Monitor APIs
 	Azure *Azure `json:"azure,omitempty"`
+
+	// progress information from pg_stat_progress_* (see above for vacuum)
+	AnalyzeProgress     []AnalyzeProgressBackend     `json:"analyze_progress,omitempty"`
+	BasebackupProgress  []BasebackupProgressBackend  `json:"basebackup_progress,omitempty"`
+	ClusterProgress     []ClusterProgressBackend     `json:"cluster_progress,omitempty"`
+	CopyProgress        []CopyProgressBackend        `json:"copy_progress,omitempty"`
+	CreateIndexProgress []CreateIndexProgressBackend `json:"create_index_progress,omitempty"`
 }
 
 // DatabaseByOID iterates over the databases in the model and returns the reference
@@ -812,4 +819,91 @@ type Azure struct {
 	ResourceType   string             `json:"resource_type"`
 	ResourceRegion string             `json:"resource_region"`
 	Metrics        map[string]float64 `json:"metrics"`
+}
+
+// AnalyzeProgressBackend represents a row (and each row represents one
+// backend) from pg_stat_progress_analyze.
+//
+// pg >= 13, schema >= 1.12, pgmetrics >= 1.13.0
+type AnalyzeProgressBackend struct {
+	PID                     int    `json:"pid"`
+	DBName                  string `json:"db_name"`
+	RelOID                  int    `json:"rel_oid"`
+	Phase                   string `json:"phase"`
+	SampleBlocksTotal       int64  `json:"sample_blks_total"`
+	SampleBlocksScanned     int64  `json:"sample_blks_scanned"`
+	ExtStatsTotal           int64  `json:"ext_stats_total"`
+	ExtStatsComputed        int64  `json:"ext_stats_computed"`
+	ChildTablesTotal        int64  `json:"child_tables_total"`
+	ChildTablesDone         int64  `json:"child_tables_done"`
+	CurrentChildTableRelOID int    `json:"child_oid"`
+}
+
+// BasebackupProgressBackend represents a row (and each row represents one
+// backend) from pg_stat_progress_basebackup.
+//
+// pg >= 13, schema >= 1.12, pgmetrics >= 1.13.0
+type BasebackupProgressBackend struct {
+	PID                 int    `json:"pid"`
+	Phase               string `json:"phase"`
+	BackupTotal         int64  `json:"backup_total"`
+	BackupStreamed      int64  `json:"backup_streamed"`
+	TablespacesTotal    int64  `json:"tablespaces_total"`
+	TablespacesStreamed int64  `json:"tablespaces_streamed"`
+}
+
+// ClusterProgressBackend represents a row (and each row represents one
+// backend) from pg_stat_progress_cluster.
+//
+// pg >= 12, schema >= 1.12, pgmetrics >= 1.13.0
+type ClusterProgressBackend struct {
+	PID               int    `json:"pid"`
+	DBName            string `json:"db_name"`
+	RelOID            int    `json:"rel_oid"`
+	Command           string `json:"command"`
+	Phase             string `json:"phase"`
+	ClusterIndexOID   int    `json:"cluser_index_oid"`
+	HeapTuplesScanned int64  `json:"heap_tuples_scanned"`
+	HeapTuplesWritten int64  `json:"heap_tuples_written"`
+	HeapBlksTotal     int64  `json:"heap_blks_total"`
+	HeapBlksScanned   int64  `json:"heap_blks_scanned"`
+	IndexRebuildCount int    `json:"index_rebuild_count"`
+}
+
+// CopyProgressBackend represents a row (and each row represents one
+// backend) from pg_stat_progress_copy.
+//
+// pg >= 14, schema >= 1.12, pgmetrics >= 1.13.0
+type CopyProgressBackend struct {
+	PID             int    `json:"pid"`
+	DBName          string `json:"db_name"`
+	RelOID          int    `json:"rel_oid"`
+	Command         string `json:"command"`
+	Type            string `json:"type"`
+	BytesProcessed  int64  `json:"bytes_processed"`
+	BytesTotal      int64  `json:"bytes_total"`
+	TuplesProcessed int64  `json:"tuples_processed"`
+	TuplesExcluded  int64  `json:"tuples_excluded"`
+}
+
+// CreateIndexProgressBackend represents a row (and each row represents one
+// backend) from pg_stat_progress_create_index.
+//
+// pg >= 12, schema >= 1.12, pgmetrics >= 1.13.0
+type CreateIndexProgressBackend struct {
+	PID              int    `json:"pid"`
+	DBName           string `json:"db_name"`
+	TableOID         int    `json:"table_oid"`
+	IndexOID         int    `json:"index_oid"`
+	Command          string `json:"command"`
+	Phase            string `json:"phase"`
+	LockersTotal     int64  `json:"lockers_total"`
+	LockersDone      int64  `json:"lockers_done"`
+	CurrentLockerPID int    `json:"current_locker_pid"`
+	BlocksTotal      int64  `json:"blocks_total"`
+	BlocksDone       int64  `json:"blocks_done"`
+	TuplesTotal      int64  `json:"tuples_total"`
+	TuplesDone       int64  `json:"tuples_done"`
+	PartitionsTotal  int64  `json:"partitions_total"`
+	PartitionsDone   int64  `json:"partitions_done"`
 }
