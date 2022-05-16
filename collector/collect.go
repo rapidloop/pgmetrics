@@ -1669,7 +1669,7 @@ func (c *collector) getVacuumProgress() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	q := `SELECT datname, COALESCE(relid, 0), COALESCE(phase, ''),
+	q := `SELECT pid, datname, COALESCE(relid, 0), COALESCE(phase, ''),
 			COALESCE(heap_blks_total, 0), COALESCE(heap_blks_scanned, 0),
 			COALESCE(heap_blks_vacuumed, 0), COALESCE(index_vacuum_count, 0),
 			COALESCE(max_dead_tuples, 0), COALESCE(num_dead_tuples, 0)
@@ -1683,7 +1683,7 @@ func (c *collector) getVacuumProgress() {
 
 	for rows.Next() {
 		var p pgmetrics.VacuumProgressBackend
-		if err := rows.Scan(&p.DBName, &p.TableOID, &p.Phase, &p.HeapBlksTotal,
+		if err := rows.Scan(&p.PID, &p.DBName, &p.TableOID, &p.Phase, &p.HeapBlksTotal,
 			&p.HeapBlksScanned, &p.HeapBlksVacuumed, &p.IndexVacuumCount,
 			&p.MaxDeadTuples, &p.NumDeadTuples); err != nil {
 			log.Fatalf("pg_stat_progress_vacuum query failed: %v", err)
@@ -2460,7 +2460,7 @@ func (c *collector) getProgressAnalyze() {
 	var out []pgmetrics.AnalyzeProgressBackend
 	for rows.Next() {
 		var r pgmetrics.AnalyzeProgressBackend
-		if err := rows.Scan(&r.PID, &r.DBName, &r.RelOID, &r.Phase,
+		if err := rows.Scan(&r.PID, &r.DBName, &r.TableOID, &r.Phase,
 			&r.SampleBlocksTotal, &r.SampleBlocksScanned, &r.ExtStatsTotal,
 			&r.ExtStatsComputed, &r.ChildTablesTotal, &r.ChildTablesDone,
 			&r.CurrentChildTableRelOID); err != nil {
@@ -2535,7 +2535,7 @@ func (c *collector) getProgressCluster() {
 	var out []pgmetrics.ClusterProgressBackend
 	for rows.Next() {
 		var r pgmetrics.ClusterProgressBackend
-		if err := rows.Scan(&r.PID, &r.DBName, &r.RelOID, &r.Command, &r.Phase,
+		if err := rows.Scan(&r.PID, &r.DBName, &r.TableOID, &r.Command, &r.Phase,
 			&r.ClusterIndexOID, &r.HeapTuplesScanned, &r.HeapTuplesWritten,
 			&r.HeapBlksTotal, &r.HeapBlksScanned, &r.IndexRebuildCount); err != nil {
 			log.Fatalf("pg_stat_progress_cluster query scan failed: %v", err)
@@ -2572,7 +2572,7 @@ func (c *collector) getProgressCopy() {
 	var out []pgmetrics.CopyProgressBackend
 	for rows.Next() {
 		var r pgmetrics.CopyProgressBackend
-		if err := rows.Scan(&r.PID, &r.DBName, &r.RelOID, &r.Command, &r.Type,
+		if err := rows.Scan(&r.PID, &r.DBName, &r.TableOID, &r.Command, &r.Type,
 			&r.BytesProcessed, &r.BytesTotal, &r.TuplesProcessed,
 			&r.TuplesExcluded); err != nil {
 			log.Fatalf("pg_stat_progress_copy query scan failed: %v", err)

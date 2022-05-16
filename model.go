@@ -229,6 +229,17 @@ func (m *Model) IndexByName(db, schema, index string) *Index {
 	return nil
 }
 
+// IndexByOID iterates over the indexes in the model and returns the reference
+// to an Index that has the given oid. If there is no such index, it returns nil.
+func (m *Model) IndexByOID(oid int) *Index {
+	for i, idx := range m.Indexes {
+		if idx.OID == oid {
+			return &m.Indexes[i]
+		}
+	}
+	return nil
+}
+
 // Metadata contains information about how to interpret the other fields in
 // "Model" data structure.
 type Metadata struct {
@@ -457,6 +468,8 @@ type VacuumProgressBackend struct {
 	IndexVacuumCount int64  `json:"index_vacuum_count"`
 	MaxDeadTuples    int64  `json:"max_dead_tuples"`
 	NumDeadTuples    int64  `json:"num_dead_tuples"`
+	// following fields present only in schema 1.12 and later
+	PID int `json:"pid,omitempty"`
 }
 
 type Extension struct {
@@ -828,7 +841,7 @@ type Azure struct {
 type AnalyzeProgressBackend struct {
 	PID                     int    `json:"pid"`
 	DBName                  string `json:"db_name"`
-	RelOID                  int    `json:"rel_oid"`
+	TableOID                int    `json:"table_oid"`
 	Phase                   string `json:"phase"`
 	SampleBlocksTotal       int64  `json:"sample_blks_total"`
 	SampleBlocksScanned     int64  `json:"sample_blks_scanned"`
@@ -859,7 +872,7 @@ type BasebackupProgressBackend struct {
 type ClusterProgressBackend struct {
 	PID               int    `json:"pid"`
 	DBName            string `json:"db_name"`
-	RelOID            int    `json:"rel_oid"`
+	TableOID          int    `json:"table_oid"`
 	Command           string `json:"command"`
 	Phase             string `json:"phase"`
 	ClusterIndexOID   int    `json:"cluser_index_oid"`
@@ -877,7 +890,7 @@ type ClusterProgressBackend struct {
 type CopyProgressBackend struct {
 	PID             int    `json:"pid"`
 	DBName          string `json:"db_name"`
-	RelOID          int    `json:"rel_oid"`
+	TableOID        int    `json:"table_oid"`
 	Command         string `json:"command"`
 	Type            string `json:"type"`
 	BytesProcessed  int64  `json:"bytes_processed"`

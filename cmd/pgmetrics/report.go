@@ -144,6 +144,7 @@ PostgreSQL Cluster:
 	if version >= pgv96 {
 		reportVacuumProgress(fd, result)
 	}
+	reportProgress(fd, result)
 	reportRoles(fd, result)
 	reportTablespaces(fd, result)
 	reportDatabases(fd, result)
@@ -621,6 +622,75 @@ Vacuum Progress:`)
 	tw.add("autovacuum_naptime", getSetting(result, "autovacuum_naptime")+" sec")
 	add("vacuum_freeze_min_age")
 	add("vacuum_freeze_table_age")
+	tw.write(fd, "    ")
+}
+
+func reportProgress(fd io.Writer, result *pgmetrics.Model) {
+	if len(result.VacuumProgress)+len(result.AnalyzeProgress)+
+		len(result.BasebackupProgress)+len(result.ClusterProgress)+
+		len(result.CopyProgress)+len(result.CreateIndexProgress) == 0 {
+		return // no jobs in progress
+	}
+
+	var tw tableWriter
+	tw.add("Job", "Backend", "Working On", "Status")
+
+	// analyze
+	for _, a := range result.AnalyzeProgress {
+		object := "?"
+		if t := result.TableByOID(a.TableOID); t != nil {
+			object = a.DBName + "." + t.Name
+		}
+		tw.add("ANALYZE", a.PID, object, a.Phase)
+	}
+
+	// basebackup
+	for _, b := range result.BasebackupProgress {
+		tw.add("BASEBACKUP", b.PID, "", b.Phase)
+	}
+
+	// cluster / vacuum full
+	for _, c := range result.ClusterProgress {
+		object := "?"
+		if t := result.TableByOID(c.TableOID); t != nil {
+			object = c.DBName + "." + t.Name
+		}
+		tw.add(c.Command, c.PID, object, c.Phase)
+	}
+
+	// copy from / copy to
+	for _, c := range result.CopyProgress {
+		object := "(query)"
+		if t := result.TableByOID(c.TableOID); t != nil {
+			object = c.DBName + "." + t.Name
+		}
+		tw.add(c.Command, c.PID, object, "")
+	}
+
+	// create index (concurrently) / reindex (concurrently)
+	for _, c := range result.CreateIndexProgress {
+		object := "?"
+		if t := result.TableByOID(c.TableOID); t != nil {
+			object = c.DBName + "." + t.Name
+			if idx := result.IndexByOID(c.IndexOID); idx != nil {
+				object += "." + idx.Name
+			}
+		}
+		tw.add(c.Command, c.PID, object, c.Phase)
+	}
+
+	// vacuum
+	for _, v := range result.VacuumProgress {
+		object := "?"
+		if t := result.TableByOID(v.TableOID); t != nil {
+			object = v.DBName + "." + t.Name
+		}
+		tw.add("VACUUM", v.PID, object, v.Phase)
+	}
+
+	fmt.Fprint(fd, `
+Jobs In Progress:
+`)
 	tw.write(fd, "    ")
 }
 
