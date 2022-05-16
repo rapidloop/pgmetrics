@@ -19,6 +19,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -91,9 +92,8 @@ PostgreSQL Cluster:
 			)
 		}
 		fmt.Fprintf(fd, `
-    Transaction IDs:     %d to %d (diff = %d)`,
-			result.OldestXid, result.NextXid-1,
-			result.NextXid-1-result.OldestXid,
+    Transaction IDs:     %s`,
+			fmtXIDRange(int64(result.OldestXid), int64(result.NextXid)),
 		)
 	}
 
@@ -1419,6 +1419,21 @@ Current Connections:
 }
 
 //------------------------------------------------------------------------------
+
+func fmtXIDRange(oldest, next int64) string {
+	if oldest < 3 || oldest > math.MaxUint32 || next < 3 || next > math.MaxUint32 || oldest == next {
+		return fmt.Sprintf("oldest = %d, next = %d (?)", oldest, next)
+	}
+
+	var r int64
+	if oldest > next {
+		r = (math.MaxUint32 - oldest + 1) + (next - 3)
+	} else {
+		r = next - oldest
+	}
+
+	return fmt.Sprintf("oldest = %d, next = %d, range = %d", oldest, next, r)
+}
 
 func fmtTime(at int64) string {
 	if at == 0 {
