@@ -24,6 +24,7 @@ archives:
       - README.md
       - LICENSE
     wrap_in_directory: true
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
 release:
   draft: true
   github:
