@@ -145,6 +145,8 @@ PostgreSQL Cluster:
 		reportVacuumProgress(fd, result)
 	}
 	reportProgress(fd, result)
+	reportDeadlocks(fd, result)
+	reportAutovacuums(fd, result)
 	reportRoles(fd, result)
 	reportTablespaces(fd, result)
 	reportDatabases(fd, result)
@@ -690,6 +692,51 @@ func reportProgress(fd io.Writer, result *pgmetrics.Model) {
 
 	fmt.Fprint(fd, `
 Jobs In Progress:
+`)
+	tw.write(fd, "    ")
+}
+
+func reportDeadlocks(fd io.Writer, result *pgmetrics.Model) {
+	if len(result.Deadlocks) == 0 {
+		return // no recent deadlocks
+	}
+
+	var tw tableWriter
+	tw.add("At", "Detail")
+	for i, d := range result.Deadlocks {
+		detail := strings.ReplaceAll(d.Detail, "\r", "")
+		detail = strings.TrimSpace(detail)
+		lines := strings.Split(detail, "\n")
+		if n := len(lines); n > 0 {
+			tw.add(fmtTime(d.At), lines[0])
+			for j := 1; j < n; j++ {
+				tw.add("", lines[j])
+			}
+			if i < len(result.Deadlocks)-1 {
+				tw.add(twLine, 0)
+			}
+		}
+	}
+
+	fmt.Fprint(fd, `
+Recent Deadlocks:
+`)
+	tw.write(fd, "    ")
+}
+
+func reportAutovacuums(fd io.Writer, result *pgmetrics.Model) {
+	if len(result.AutoVacuums) == 0 {
+		return // no recent autovacuums
+	}
+
+	var tw tableWriter
+	tw.add("At", "Table", "Time Taken (sec)")
+	for _, a := range result.AutoVacuums {
+		tw.add(fmtTime(a.At), a.Table, fmt.Sprintf("%.1f", a.Elapsed))
+	}
+
+	fmt.Fprint(fd, `
+Recent Autovacuums:
 `)
 	tw.write(fd, "    ")
 }
@@ -1764,6 +1811,8 @@ type tableWriter struct {
 	hasFooter bool
 }
 
+const twLine = "\b1"
+
 func (t *tableWriter) add(cols ...interface{}) {
 	row := make([]string, len(cols))
 	for i, c := range cols {
@@ -1799,6 +1848,9 @@ func (t *tableWriter) write(fd io.Writer, pfx string) (tw int) {
 	for _, row := range t.data {
 		for c, col := range row {
 			w := len(col)
+			if w > 1 && col[0] == '\b' {
+				w = 0
+			}
 			if widths[c] < w {
 				widths[c] = w
 			}
@@ -1820,6 +1872,12 @@ func (t *tableWriter) write(fd io.Writer, pfx string) (tw int) {
 	}
 	line()
 	for i, row := range t.data {
+		if len(row) > 0 {
+			if row[0] == twLine {
+				line()
+				continue
+			}
+		}
 		if i == 1 || (t.hasFooter && i == len(t.data)-1) {
 			line()
 		}
