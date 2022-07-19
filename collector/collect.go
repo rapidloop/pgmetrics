@@ -715,7 +715,7 @@ func (c *collector) getReplicationv10() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	q := `SELECT usename, application_name,
+	q := `SELECT COALESCE(usename, ''), application_name,
 			COALESCE(client_hostname::text, client_addr::text, ''), 
 			COALESCE(EXTRACT(EPOCH FROM backend_start)::bigint, 0),
 			backend_xmin, COALESCE(state, ''),
@@ -766,7 +766,7 @@ func (c *collector) getReplicationv9() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	q := `SELECT usename, application_name,
+	q := `SELECT COALESCE(usename, ''), application_name,
 			COALESCE(client_hostname::text, client_addr::text, ''), 
 			COALESCE(EXTRACT(EPOCH FROM backend_start)::bigint, 0),
 			backend_xmin, COALESCE(state, ''),
