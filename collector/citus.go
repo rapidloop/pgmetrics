@@ -61,6 +61,11 @@ func (c *collector) getCitus(currdb string, fillSize bool) {
 	c.getCitusStatements(currdb)         // citus_stat_statements
 	c.getCitusActivity(currdb, majorVer) // citus_{dist_,worker_,}stat_activity
 	c.getCitusLocks(currdb, majorVer)    // citus_lock_waits
+
+	if majorVer >= 11 {
+		c.getCitusTables(currdb)
+		c.getCitusCoordinatorNodeID(currdb)
+	}
 }
 
 func (c *collector) getCitusVersion(currdb string, major *int) {
@@ -314,5 +319,70 @@ func (c *collector) getCitusLocks(currdb string, majorVer int) {
 	}
 	if err := rows.Err(); err != nil {
 		log.Printf("warning: citus_lock_waits query failed: %v", err)
+	}
+}
+
+// citusTablesSQL is a slightly modified version of the SQL used for citus_tables
+const citusTablesSQL = `
+SELECT p.logicalrelid::oid::int AS table_oid,
+       p.logicalrelid AS table_name,
+       CASE
+           WHEN p.partkey IS NOT NULL THEN 'distributed'::text
+           ELSE
+           CASE
+               WHEN p.repmodel = 't'::"char" THEN 'reference'::text
+               ELSE 'local'::text
+           END
+       END AS citus_table_type,
+   COALESCE(column_to_column_name(p.logicalrelid, p.partkey), '<none>'::text) AS distribution_column,
+   p.colocationid AS colocation_id,
+   citus_total_relation_size(p.logicalrelid, fail_on_error => false) AS table_size,
+   ( SELECT count(*) AS count
+          FROM pg_dist_shard
+         WHERE pg_dist_shard.logicalrelid::oid = p.logicalrelid::oid) AS shard_count,
+   pg_get_userbyid(c.relowner) AS table_owner,
+   a.amname AS access_method
+  FROM pg_dist_partition p
+    JOIN pg_class c ON p.logicalrelid::oid = c.oid
+    LEFT JOIN pg_am a ON a.oid = c.relam
+ WHERE NOT (p.logicalrelid::oid IN ( SELECT pg_depend.objid
+          FROM pg_depend
+         WHERE pg_depend.classid = 'pg_class'::regclass::oid AND pg_depend.refclassid = 'pg_extension'::regclass::oid AND pg_depend.deptype = 'e'::"char"))
+ ORDER BY (p.logicalrelid::text)
+`
+
+func (c *collector) getCitusTables(currdb string) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	rows, err := c.db.QueryContext(ctx, citusTablesSQL)
+	if err != nil {
+		log.Printf("warning: citus tables query failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var t pgmetrics.CitusTable
+		if err := rows.Scan(&t.OID, &t.TableName, &t.TableType,
+			&t.DistributionColumn, &t.ColocationID, &t.Size, &t.ShardCount,
+			&t.TableOwner, &t.AccessMethod); err != nil {
+			log.Printf("warning: citus tables query failed: %v", err)
+			return
+		}
+		c.result.Citus[currdb].Tables = append(c.result.Citus[currdb].Tables, t)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("warning: citus tables query failed: %v", err)
+	}
+}
+
+func (c *collector) getCitusCoordinatorNodeID(currdb string) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT COALESCE(citus_coordinator_nodeid(), 0)`
+	if err := c.db.QueryRowContext(ctx, q).Scan(&c.result.Citus[currdb].CoordinatorNodeID); err != nil {
+		log.Printf("warning: citus_coordinator_nodeid() query failed: %v", err)
 	}
 }

@@ -762,7 +762,9 @@ type Citus struct {
 	WorkerBackends []CitusBackend   `json:"worker_activity,omitempty"` // citus <=10.x
 	Locks          []CitusLock      `json:"locks"`
 	// following fields present only in schema 1.13 and later
-	AllBackends []CitusBackendV11 `json:"activity,omitempty"` // citus >=11.x
+	AllBackends       []CitusBackendV11 `json:"activity,omitempty"` // citus >=11.x
+	Tables            []CitusTable      `json:"tables,omitempty"`   // citus >=11.x
+	CoordinatorNodeID int               `json:"coordinator_nodeid"` // citus >=11.x
 }
 
 // CitusNode represents a row from the pg_dist_node table. Added in schema 1.9.
@@ -826,6 +828,20 @@ type CitusLock struct {
 	// following fields present only in schema 1.13 and later
 	WaitingGPID  int64 `json:"waiting_gpid,omitempty"`  // citus >=11.x
 	BlockingGPID int64 `json:"blocking_gpid,omitempty"` // citus >=11.x
+}
+
+// CitusTable represents an equivalent of a single row from citus_tables.
+// Added in schema 1.13.
+type CitusTable struct {
+	OID                int    `json:"oid"`
+	TableName          string `json:"table_name"`
+	TableType          string `json:"citus_table_type"`
+	DistributionColumn string `json:"distribution_column"`
+	ColocationID       int    `json:"colocation_id"`
+	Size               int64  `json:"table_size"`
+	ShardCount         int    `json:"shard_count"`
+	TableOwner         string `json:"table_owner"`
+	AccessMethod       string `json:"access_method"`
 }
 
 // WAL represents a single row from pg_stat_wal. Added in schema 1.11.
