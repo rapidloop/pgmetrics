@@ -20,9 +20,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	"github.com/rapidloop/pgmetrics"
+	"golang.org/x/mod/semver"
 )
 
 func (c *collector) getCitus(currdb string, fillSize bool) {
@@ -47,21 +49,22 @@ func (c *collector) getCitus(currdb string, fillSize bool) {
 	}
 
 	// get version
-	c.getCitusVersion(currdb)
+	var majorVer int
+	c.getCitusVersion(currdb, &majorVer)
 
 	// get size (if not explicitly disabled)
 	if fillSize {
 		c.getCitusTableSizes(currdb)
 	}
 
-	c.getCitusNodes(currdb)          // pg_dist_node
-	c.getCitusStatements(currdb)     // citus_stat_statements
-	c.getCitusDistActivity(currdb)   // citus_dist_stat_activity
-	c.getCitusWorkerActivity(currdb) // citus_worker_stat_activity
-	c.getCitusLocks(currdb)          // citus_lock_waits
+	c.getCitusNodes(currdb)           // pg_dist_node
+	c.getCitusStatements(currdb)      // citus_stat_statements
+	c.getCitusDistActivity(currdb)    // citus_dist_stat_activity
+	c.getCitusWorkerActivity(currdb)  // citus_worker_stat_activity
+	c.getCitusLocks(currdb, majorVer) // citus_lock_waits
 }
 
-func (c *collector) getCitusVersion(currdb string) {
+func (c *collector) getCitusVersion(currdb string, major *int) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -72,6 +75,10 @@ func (c *collector) getCitusVersion(currdb string) {
 		return
 	}
 	c.result.Citus[currdb].Version = cv
+
+	if s := semver.Major("v" + c.setting("citus.version")); s != "" {
+		*major, _ = strconv.Atoi(strings.TrimPrefix(s, "v"))
+	}
 }
 
 func (c *collector) getCitusTableSizes(currdb string) {
@@ -139,7 +146,7 @@ func (c *collector) getCitusStatements(currdb string) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	q := `SELECT queryid, userid, dbid, query, executor, partition_key, calls
+	q := `SELECT queryid, userid, dbid, query, executor, COALESCE(partition_key, ''), calls
             FROM citus_stat_statements`
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
@@ -226,15 +233,24 @@ func (c *collector) getCitusWorkerActivity(currdb string) {
 }
 
 // citus_lock_waits
-func (c *collector) getCitusLocks(currdb string) {
+func (c *collector) getCitusLocks(currdb string, majorVer int) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	q := `SELECT waiting_pid, blocking_pid, blocked_statement,
-			current_statement_in_blocking_process, waiting_node_id,
-			blocking_node_id, waiting_node_name, blocking_node_name,
-			waiting_node_port, blocking_node_port
-          FROM citus_lock_waits`
+	var q string
+	if majorVer >= 11 {
+		q = `SELECT 0, 0, blocked_statement,
+				current_statement_in_blocking_process, waiting_nodeid,
+				blocking_nodeid, '', '', 0, 0, waiting_gpid, blocking_gpid
+	          FROM citus_lock_waits`
+	} else {
+		q = `SELECT waiting_pid, blocking_pid, blocked_statement,
+				current_statement_in_blocking_process, waiting_node_id,
+				blocking_node_id, waiting_node_name, blocking_node_name,
+				waiting_node_port, blocking_node_port, 0, 0
+	          FROM citus_lock_waits`
+	}
+
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
 		log.Printf("warning: citus_lock_waits query failed: %v", err)
@@ -247,7 +263,7 @@ func (c *collector) getCitusLocks(currdb string) {
 		if err := rows.Scan(&l.WaitingPID, &l.BlockingPID, &l.BlockedStmt,
 			&l.CurrStmt, &l.WaitingNodeID, &l.BlockingNodeID,
 			&l.WaitingNodeName, &l.BlockingNodeName, &l.WaitingNodePort,
-			&l.BlockingNodePort); err != nil {
+			&l.BlockingNodePort, &l.WaitingGPID, &l.BlockingGPID); err != nil {
 			log.Printf("warning: citus_lock_waits query failed: %v", err)
 			return
 		}
