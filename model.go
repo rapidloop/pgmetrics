@@ -758,9 +758,11 @@ type Citus struct {
 	Version        string           `json:"version"`
 	Nodes          []CitusNode      `json:"nodes"`
 	Statements     []CitusStatement `json:"statements"`
-	Backends       []CitusBackend   `json:"dist_activity"`
-	WorkerBackends []CitusBackend   `json:"worker_activity"`
+	Backends       []CitusBackend   `json:"dist_activity,omitempty"`   // citus <=10.x
+	WorkerBackends []CitusBackend   `json:"worker_activity,omitempty"` // citus <=10.x
 	Locks          []CitusLock      `json:"locks"`
+	// following fields present only in schema 1.13 and later
+	AllBackends []CitusBackendV11 `json:"activity,omitempty"` // citus >=11.x
 }
 
 // CitusNode represents a row from the pg_dist_node table. Added in schema 1.9.
@@ -788,7 +790,7 @@ type CitusStatement struct {
 }
 
 // CitusBackend represents a row from citus_dist_stat_activity or from
-// citus_worker_stat_activity. Added in schema 1.9.
+// citus_worker_stat_activity; in Citus <=10.x. Added in schema 1.9.
 type CitusBackend struct {
 	Backend                    // also include all fields from pg_stat_activity
 	QueryHostname       string `json:"query_hostname"`
@@ -797,6 +799,16 @@ type CitusBackend struct {
 	MasterQueryPort     int    `json:"master_query_port"`
 	TxNumber            int64  `json:"transaction_number"`
 	TxStamp             int64  `json:"transaction_stamp"`
+}
+
+// CitusBackendV11 represents a row from citus_stat_activity in Citus >=11.x.
+// Added in schema 1.13.
+type CitusBackendV11 struct {
+	Backend              // also include all fields from pg_stat_activity
+	GlobalPID     int64  `json:"global_pid"`
+	NodeID        int    `json:"node_id"`
+	IsWorkerQuery bool   `json:"is_worker_query"`
+	BackendType   string `json:"backend_type"`
 }
 
 // CitusLock represents a single row from citus_lock_waits. Added in schema 1.9.

@@ -57,11 +57,10 @@ func (c *collector) getCitus(currdb string, fillSize bool) {
 		c.getCitusTableSizes(currdb)
 	}
 
-	c.getCitusNodes(currdb)           // pg_dist_node
-	c.getCitusStatements(currdb)      // citus_stat_statements
-	c.getCitusDistActivity(currdb)    // citus_dist_stat_activity
-	c.getCitusWorkerActivity(currdb)  // citus_worker_stat_activity
-	c.getCitusLocks(currdb, majorVer) // citus_lock_waits
+	c.getCitusNodes(currdb)              // pg_dist_node
+	c.getCitusStatements(currdb)         // citus_stat_statements
+	c.getCitusActivity(currdb, majorVer) // citus_{dist_,worker_,}stat_activity
+	c.getCitusLocks(currdb, majorVer)    // citus_lock_waits
 }
 
 func (c *collector) getCitusVersion(currdb string, major *int) {
@@ -173,6 +172,51 @@ func (c *collector) getCitusStatements(currdb string) {
 	}
 }
 
+func (c *collector) getCitusBackendsv11() []pgmetrics.CitusBackendV11 {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT COALESCE(datname, ''), COALESCE(usename, ''),
+			COALESCE(application_name, ''), COALESCE(pid, 0),
+			COALESCE(client_hostname::text, client_addr::text, ''),
+			COALESCE(EXTRACT(EPOCH FROM backend_start)::bigint, 0),
+			COALESCE(EXTRACT(EPOCH FROM xact_start)::bigint, 0),
+			COALESCE(EXTRACT(EPOCH FROM query_start)::bigint, 0),
+			COALESCE(EXTRACT(EPOCH FROM state_change)::bigint, 0),
+			COALESCE(wait_event_type, ''), COALESCE(wait_event, ''),
+			COALESCE(state, ''), COALESCE(backend_xid, ''),
+			COALESCE(backend_xmin, ''), LEFT(COALESCE(query, ''), $1),
+			COALESCE(global_pid, 0), COALESCE(nodeid, 0),
+			COALESCE(is_worker_query, false), COALESCE(query_id, 0),
+			COALESCE(backend_type, '')
+		  FROM citus_stat_activity ORDER BY pid ASC`
+	rows, err := c.db.QueryContext(ctx, q, c.sqlLength)
+	if err != nil {
+		log.Printf("warning: citus_stat_activity query failed: %v", err)
+		return nil
+	}
+	defer rows.Close()
+
+	var out []pgmetrics.CitusBackendV11
+	for rows.Next() {
+		var b pgmetrics.CitusBackendV11
+		if err := rows.Scan(&b.DBName, &b.RoleName, &b.ApplicationName,
+			&b.PID, &b.ClientAddr, &b.BackendStart, &b.XactStart, &b.QueryStart,
+			&b.StateChange, &b.WaitEventType, &b.WaitEvent, &b.State,
+			&b.BackendXid, &b.BackendXmin, &b.Query, &b.GlobalPID,
+			&b.NodeID, &b.IsWorkerQuery, &b.QueryID, &b.BackendType); err != nil {
+			log.Printf("warning: citus_stat_activity query failed: %v", err)
+			return nil
+		}
+		out = append(out, b)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("warning: citus_stat_activity query failed: %v", err)
+		return nil
+	}
+	return out
+}
+
 func (c *collector) getCitusBackends(table string) []pgmetrics.CitusBackend {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
@@ -222,14 +266,13 @@ func (c *collector) getCitusBackends(table string) []pgmetrics.CitusBackend {
 	return out
 }
 
-// citus_dist_stat_activity
-func (c *collector) getCitusDistActivity(currdb string) {
-	c.result.Citus[currdb].Backends = c.getCitusBackends("citus_dist_stat_activity")
-}
-
-// citus_worker_stat_activity
-func (c *collector) getCitusWorkerActivity(currdb string) {
-	c.result.Citus[currdb].WorkerBackends = c.getCitusBackends("citus_worker_stat_activity")
+func (c *collector) getCitusActivity(currdb string, major int) {
+	if major >= 11 {
+		c.result.Citus[currdb].AllBackends = c.getCitusBackendsv11()
+	} else {
+		c.result.Citus[currdb].Backends = c.getCitusBackends("citus_dist_stat_activity")
+		c.result.Citus[currdb].WorkerBackends = c.getCitusBackends("citus_worker_stat_activity")
+	}
 }
 
 // citus_lock_waits
