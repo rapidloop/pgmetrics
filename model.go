@@ -19,21 +19,21 @@ package pgmetrics
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
 //
-//	   1.13 - Citus 11 support
-//	   1.12 - Azure metrics, queryid in plan, progress views
-//	   1.11 - Postgres 14, PgBouncer 1.16, other attributes
-//	   1.10 - New fields in pg_stat_statements for Postgres 13
-//	   1.9 - Postgres 13, Citus support
-//	   1.8 - AWS RDS/EnhancedMonitoring metrics, index defn,
+//	  1.13 - Citus 11 support
+//	  1.12 - Azure metrics, queryid in plan, progress views
+//	  1.11 - Postgres 14, PgBouncer 1.16, other attributes
+//	  1.10 - New fields in pg_stat_statements for Postgres 13
+//	  1.9 - Postgres 13, Citus support
+//	  1.8 - AWS RDS/EnhancedMonitoring metrics, index defn,
 //					backend type counts, slab memory (linux), user agent
-//	   1.7 - query execution plans, autovacuum, deadlocks, table acl
-//	   1.6 - added highest WAL segment number
-//	   1.5 - add PID to replication_outgoing entries
-//	   1.4 - pgbouncer information
-//	   1.3 - locks information
-//	   1.2 - more table and index attributes
-//	   1.1 - added NotificationQueueUsage and Statements
-//	   1.0 - initial release
+//	  1.7 - query execution plans, autovacuum, deadlocks, table acl
+//	  1.6 - added highest WAL segment number
+//	  1.5 - add PID to replication_outgoing entries
+//	  1.4 - pgbouncer information
+//	  1.3 - locks information
+//	  1.2 - more table and index attributes
+//	  1.1 - added NotificationQueueUsage and Statements
+//	  1.0 - initial release
 const ModelSchemaVersion = "1.13"
 
 // Model contains the entire information collected by a single run of
@@ -762,9 +762,10 @@ type Citus struct {
 	WorkerBackends []CitusBackend   `json:"worker_activity,omitempty"` // citus <=10.x
 	Locks          []CitusLock      `json:"locks"`
 	// following fields present only in schema 1.13 and later
-	AllBackends       []CitusBackendV11 `json:"activity,omitempty"` // citus >=11.x
-	Tables            []CitusTable      `json:"tables,omitempty"`   // citus >=11.x
-	CoordinatorNodeID int               `json:"coordinator_nodeid"` // citus >=11.x
+	AllBackends       []CitusBackendV11 `json:"activity,omitempty"`           // citus >=11.x
+	Tables            []CitusTable      `json:"tables,omitempty"`             // citus >=11.x
+	CoordinatorNodeID int               `json:"coordinator_nodeid,omitempty"` // citus >=11.x
+	ConnectedNodeID   int               `json:"connected_nodeid,omitempty"`   // citus >=11.x, the node pgmetrics connected to
 }
 
 // CitusNode represents a row from the pg_dist_node table. Added in schema 1.9.
@@ -815,16 +816,16 @@ type CitusBackendV11 struct {
 
 // CitusLock represents a single row from citus_lock_waits. Added in schema 1.9.
 type CitusLock struct {
-	WaitingPID       int    `json:"waiting_pid"`  // citus <=10.x, 0 otherwise
-	BlockingPID      int    `json:"blocking_pid"` // citus <=10.x, 0 otherwise
+	WaitingPID       int    `json:"waiting_pid,omitempty"`  // citus <=10.x, 0 otherwise
+	BlockingPID      int    `json:"blocking_pid,omitempty"` // citus <=10.x, 0 otherwise
 	BlockedStmt      string `json:"blocked_statement"`
 	CurrStmt         string `json:"current_statement_in_blocking_process"`
 	WaitingNodeID    int    `json:"waiting_node_id"`
 	BlockingNodeID   int    `json:"blocking_node_id"`
-	WaitingNodeName  string `json:"waiting_node_name"`  // citus <=10.x, '' otherwise
-	BlockingNodeName string `json:"blocking_node_name"` // citus <=10.x, '' otherwise
-	WaitingNodePort  int    `json:"waiting_node_port"`  // citus <=10.x, 0 otherwise
-	BlockingNodePort int    `json:"blocking_node_port"` // citus <=10.x, 0 otherwise
+	WaitingNodeName  string `json:"waiting_node_name,omitempty"`  // citus <=10.x, '' otherwise
+	BlockingNodeName string `json:"blocking_node_name,omitempty"` // citus <=10.x, '' otherwise
+	WaitingNodePort  int    `json:"waiting_node_port,omitempty"`  // citus <=10.x, 0 otherwise
+	BlockingNodePort int    `json:"blocking_node_port,omitempty"` // citus <=10.x, 0 otherwise
 	// following fields present only in schema 1.13 and later
 	WaitingGPID  int64 `json:"waiting_gpid,omitempty"`  // citus >=11.x
 	BlockingGPID int64 `json:"blocking_gpid,omitempty"` // citus >=11.x

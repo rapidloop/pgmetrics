@@ -64,7 +64,7 @@ func (c *collector) getCitus(currdb string, fillSize bool) {
 
 	if majorVer >= 11 {
 		c.getCitusTables(currdb)
-		c.getCitusCoordinatorNodeID(currdb)
+		c.getCitusNodeIDs(currdb)
 	}
 }
 
@@ -334,7 +334,7 @@ SELECT p.logicalrelid::oid::int AS table_oid,
                ELSE 'local'::text
            END
        END AS citus_table_type,
-   COALESCE(column_to_column_name(p.logicalrelid, p.partkey), '<none>'::text) AS distribution_column,
+   COALESCE(column_to_column_name(p.logicalrelid, p.partkey), ''::text) AS distribution_column,
    p.colocationid AS colocation_id,
    citus_total_relation_size(p.logicalrelid, fail_on_error => false) AS table_size,
    ( SELECT count(*) AS count
@@ -377,12 +377,13 @@ func (c *collector) getCitusTables(currdb string) {
 	}
 }
 
-func (c *collector) getCitusCoordinatorNodeID(currdb string) {
+func (c *collector) getCitusNodeIDs(currdb string) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	q := `SELECT COALESCE(citus_coordinator_nodeid(), 0)`
-	if err := c.db.QueryRowContext(ctx, q).Scan(&c.result.Citus[currdb].CoordinatorNodeID); err != nil {
-		log.Printf("warning: citus_coordinator_nodeid() query failed: %v", err)
+	q := `SELECT COALESCE(citus_coordinator_nodeid(), 0), COALESCE(citus_backend_gpid(), 0)/10000000000`
+	if err := c.db.QueryRowContext(ctx, q).Scan(&c.result.Citus[currdb].CoordinatorNodeID,
+		&c.result.Citus[currdb].ConnectedNodeID); err != nil {
+		log.Printf("warning: citus_coordinator_nodeid()/citus_backend_gpid() query failed: %v", err)
 	}
 }
