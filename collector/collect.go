@@ -2415,6 +2415,11 @@ func (c *collector) getBloat() {
 }
 
 func (c *collector) getWAL() {
+	// skip if Aurora, because the function errors out with:
+	// "Function pg_stat_get_wal_receiver() is currently not supported in Aurora"
+	if c.isAWSAurora() {
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
