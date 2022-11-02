@@ -19,7 +19,7 @@ package pgmetrics
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
 //
-//	  1.13 - Citus 11 support
+//	  1.13 - Citus 11 support, Postgres 15
 //	  1.12 - Azure metrics, queryid in plan, progress views
 //	  1.11 - Postgres 14, PgBouncer 1.16, other attributes
 //	  1.10 - New fields in pg_stat_statements for Postgres 13
@@ -630,6 +630,9 @@ type Subscription struct {
 	LastMsgReceiptTime int64  `json:"last_msg_receipt_time"`
 	LatestEndTime      int64  `json:"latest_end_time"`
 	Latency            int64  `json:"latency_micros"`
+	// following fields present only in schema 1.13 and later
+	ApplyErrorCount int `json:"apply_error_count,omitempty"` // >= pg15
+	SyncErrorCount  int `json:"sync_error_count,omitempty"`  // >= pg15
 }
 
 // Lock represents a single row from pg_locks. Added in schema 1.3.
