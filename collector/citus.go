@@ -336,7 +336,7 @@ SELECT p.logicalrelid::oid::int AS table_oid,
        END AS citus_table_type,
    COALESCE(column_to_column_name(p.logicalrelid, p.partkey), ''::text) AS distribution_column,
    p.colocationid AS colocation_id,
-   citus_total_relation_size(p.logicalrelid, fail_on_error => false) AS table_size,
+   COALESCE(citus_total_relation_size(p.logicalrelid, fail_on_error => false), 0::bigint) AS table_size,
    ( SELECT count(*) AS count
           FROM pg_dist_shard
          WHERE pg_dist_shard.logicalrelid::oid = p.logicalrelid::oid) AS shard_count,
