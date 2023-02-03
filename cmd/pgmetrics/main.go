@@ -26,7 +26,6 @@ import (
 	"os/exec"
 	"regexp"
 
-	"github.com/howeyc/gopass"
 	"github.com/pborman/getopt"
 	"github.com/rapidloop/pgmetrics"
 	"github.com/rapidloop/pgmetrics/collector"
@@ -391,7 +390,7 @@ func main() {
 	args := o.parse()
 	if !o.passNone && len(o.input) == 0 && os.Getenv("PGPASSWORD") == "" {
 		fmt.Fprint(os.Stderr, "Password: ")
-		p, err := gopass.GetPasswd()
+		p, err := term.ReadPassword(int(os.Stdin.Fd()))
 		if err != nil {
 			os.Exit(1)
 		}
