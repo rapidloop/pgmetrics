@@ -1,4 +1,4 @@
-FROM golang:1.19
+FROM golang:1.20
 RUN GO111MODULES=on CGO_ENABLED=0 GOOS=linux go install -v github.com/rapidloop/pgmetrics/cmd/pgmetrics@latest
 
 FROM alpine:latest  
