@@ -3,7 +3,7 @@ module github.com/rapidloop/pgmetrics
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v0.14.0
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/monitor/armmonitor v0.6.0
-	github.com/aws/aws-sdk-go v1.33.0
+	github.com/aws/aws-sdk-go v1.34.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/pborman/getopt v1.1.0
 	github.com/rapidloop/pq v1.1.1
