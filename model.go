@@ -19,6 +19,7 @@ package pgmetrics
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
 //
+//	  1.14 - PgBouncer 1.19
 //	  1.13 - Citus 11 support, Postgres 15
 //	  1.12 - Azure metrics, queryid in plan, progress views
 //	  1.11 - Postgres 14, PgBouncer 1.16, other attributes
@@ -34,7 +35,7 @@ package pgmetrics
 //	  1.2 - more table and index attributes
 //	  1.1 - added NotificationQueueUsage and Statements
 //	  1.0 - initial release
-const ModelSchemaVersion = "1.13"
+const ModelSchemaVersion = "1.14"
 
 // Model contains the entire information collected by a single run of
 // pgmetrics. It can be converted to and from json without loss of
@@ -683,7 +684,13 @@ type PgBouncerPool struct {
 	Mode      string  `json:"pool_mode"`
 
 	// following fields present only in schema 1.11 and later
-	ClCancelReq int `json:"cl_cancel_req,omitempty"` // only in pgbouncer >= v1.16.0
+	ClCancelReq int `json:"cl_cancel_req,omitempty"` // only in pgbouncer v1.16 & v1.17
+
+	// following fields present only in schema 1.14 and later
+	ClActiveCancelReq  int `json:cl_active_cancel_req",omitempty"`  // only in pgbouncer >= v1.18
+	ClWaitingCancelReq int `json:cl_waiting_cancel_req",omitempty"` // only in pgbouncer >= v1.18
+	SvActiveCancel     int `json:sv_active_cancel",omitempty"`      // only in pgbouncer >= v1.18
+	SvBeingCanceled    int `json:sv_being_canceled",omitempty"`     // only in pgbouncer >= v1.18
 }
 
 // PgBouncerDatabase contains information about one database of PgBouncer

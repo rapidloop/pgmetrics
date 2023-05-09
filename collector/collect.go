@@ -2686,20 +2686,20 @@ func (c *collector) collectPgBouncer() {
 }
 
 /*
--[ RECORD 1 ]---------
-database   | pgbouncer
-user       | pgbouncer
-cl_active  | 1
-cl_waiting | 0
-sv_active  | 0
-sv_idle    | 0
-sv_used    | 0
-sv_tested  | 0
-sv_login   | 0
-maxwait    | 0
-maxwait_us | 0
-pool_mode  | statement
-*/
+ * PgBouncer "SHOW POOLS" changes across recent PgBouncer versions:
+ *
+ * 1.15: (12) database, user, cl_active, cl_waiting, sv_active, sv_idle,
+ *            sv_used, sv_tested, sv_login, maxwait, maxwait_us, pool_mode
+ * 1.16: (13) database, user, cl_active, cl_waiting, cl_cancel_req, sv_active,
+ *            sv_idle, sv_used, sv_tested, sv_login, maxwait, maxwait_us, pool_mode
+ * 1.17: same as 1.16
+ * 1.18: (16) database, user, cl_active, cl_waiting, cl_active_cancel_req,
+ *            cl_waiting_cancel_req, sv_active, sv_active_cancel,
+ *            sv_being_canceled, sv_idle, sv_used, sv_tested, sv_login, maxwait,
+ *            maxwait_us, pool_mode
+ * 1.19: same as 1.18
+ */
+
 func (c *collector) getPBPools() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
@@ -2728,6 +2728,12 @@ func (c *collector) getPBPools() {
 				&pool.ClWaiting, &pool.ClCancelReq, &pool.SvActive, &pool.SvIdle,
 				&pool.SvUsed, &pool.SvTested, &pool.SvLogin, &pool.MaxWait,
 				&maxWaitUs, &pool.Mode)
+		} else if ncols == 16 {
+			err = rows.Scan(&pool.Database, &pool.UserName, &pool.ClActive,
+				&pool.ClWaiting, &pool.ClActiveCancelReq, &pool.ClWaitingCancelReq,
+				&pool.SvActive, &pool.SvActiveCancel, &pool.SvBeingCanceled,
+				&pool.SvIdle, &pool.SvUsed, &pool.SvTested, &pool.SvLogin,
+				&pool.MaxWait, &maxWaitUs, &pool.Mode)
 		} else {
 			log.Fatalf("pgbouncer: unsupported number of columns %d in 'SHOW POOLS'", ncols)
 		}
@@ -2743,25 +2749,19 @@ func (c *collector) getPBPools() {
 }
 
 /*
--[ RECORD 1 ]+--------------------
-type         | S
-user         | user1
-database     | db1
-state        | active
-addr         | 127.0.0.1
-port         | 5432
-local_addr   | 127.0.0.1
-local_port   | 52664
-connect_time | 2019-02-19 09:24:42
-request_time | 2019-02-19 09:25:02
-wait         | 0
-wait_us      | 0
-close_needed | 0
-ptr          | 0x55cec2a87f40
-link         | 0x55cec2a82f70
-remote_pid   | 5017
-tls          |
-*/
+ * PgBouncer "SHOW SERVERS" changes across recent PgBouncer versions:
+ *
+ * 1.15: (17) type, user, database, state, addr, port, local_addr, local_port,
+ *            connect_time, request_time, wait, wait_us, close_needed, ptr,
+ *            link, remote_pid, tls
+ * 1.16: same as 1.15
+ * 1.17: same as 1.16
+ * 1.18: (18) type, user, database, state, addr, port, local_addr, local_port,
+ *            connect_time, request_time, wait, wait_us, close_needed, ptr,
+ *            link, remote_pid, tls, application_name
+ * 1.19: same as 1.18
+ */
+
 func (c *collector) getPBServers() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
@@ -2778,7 +2778,7 @@ func (c *collector) getPBServers() {
 	}
 
 	for rows.Next() {
-		var s [14]sql.NullString
+		var s [15]sql.NullString
 		var state string
 		var wait, waitUs float64
 		if ncols == 16 {
@@ -2788,6 +2788,10 @@ func (c *collector) getPBServers() {
 			err = rows.Scan(&s[0], &s[1], &s[2], &state, &s[3], &s[4], &s[5],
 				&s[6], &s[7], &s[8], &wait, &waitUs, &s[9], &s[10], &s[11], &s[12],
 				&s[13])
+		} else if ncols == 18 {
+			err = rows.Scan(&s[0], &s[1], &s[2], &state, &s[3], &s[4], &s[5],
+				&s[6], &s[7], &s[8], &wait, &waitUs, &s[9], &s[10], &s[11], &s[12],
+				&s[13], &s[14])
 		} else {
 			log.Fatalf("pgbouncer: unsupported number of columns %d in 'SHOW SERVERS'", ncols)
 		}
@@ -2813,25 +2817,19 @@ func (c *collector) getPBServers() {
 }
 
 /*
--[ RECORD 1 ]+--------------------
-type         | C
-user         | user1
-database     | db1
-state        | active
-addr         | 127.0.0.1
-port         | 33374
-local_addr   | 127.0.0.1
-local_port   | 16432
-connect_time | 2019-02-19 09:24:42
-request_time | 2019-02-19 09:38:05
-wait         | 0
-wait_us      | 0
-close_needed | 0
-ptr          | 0x55cec2a82f70
-link         | 0x55cec2a87f40
-remote_pid   | 0
-tls          |
-*/
+ * PgBouncer "SHOW CLIENTS" changes across recent PgBouncer versions:
+ *
+ * 1.15: (17) type, user, database, state, addr, port, local_addr, local_port,
+ *            connect_time, request_time, wait, wait_us, close_needed, ptr,
+ *            link, remote_pid, tls
+ * 1.16: same as 1.15
+ * 1.17: same as 1.16
+ * 1.18: (18) type, user, database, state, addr, port, local_addr, local_port,
+ *            connect_time, request_time, wait, wait_us, close_needed, ptr,
+ *            link, remote_pid, tls, application_name
+ * 1.19: same as 1.18
+ */
+
 func (c *collector) getPBClients() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
@@ -2849,7 +2847,7 @@ func (c *collector) getPBClients() {
 
 	var totalWait float64
 	for rows.Next() {
-		var s [14]sql.NullString
+		var s [15]sql.NullString
 		var state string
 		var wait, waitUs float64
 		if ncols == 16 {
@@ -2859,6 +2857,10 @@ func (c *collector) getPBClients() {
 			err = rows.Scan(&s[0], &s[1], &s[2], &state, &s[3], &s[4], &s[5],
 				&s[6], &s[7], &s[8], &wait, &waitUs, &s[9], &s[10], &s[11], &s[12],
 				&s[13])
+		} else if ncols == 18 {
+			err = rows.Scan(&s[0], &s[1], &s[2], &state, &s[3], &s[4], &s[5],
+				&s[6], &s[7], &s[8], &wait, &waitUs, &s[9], &s[10], &s[11], &s[12],
+				&s[13], &s[14])
 		} else {
 			log.Fatalf("pgbouncer: unsupported number of columns %d in 'SHOW CLIENTS'", ncols)
 		}
@@ -2890,23 +2892,18 @@ func (c *collector) getPBClients() {
 }
 
 /*
--[ RECORD 1 ]-----+----------
-database          | db1
-total_xact_count  | 2
-total_query_count | 5
-total_received    | 724
-total_sent        | 458
-total_xact_time   | 782187281
-total_query_time  | 183481
-total_wait_time   | 95445
-avg_xact_count    | 0
-avg_query_count   | 0
-avg_recv          | 6
-avg_sent          | 3
-avg_xact_time     | 782187281
-avg_query_time    | 45718
-avg_wait_time     | 0
-*/
+ * PgBouncer "SHOW STATS" changes across recent PgBouncer versions:
+ *
+ * 1.15: (15) database, total_xact_count, total_query_count, total_received,
+ *            total_sent, total_xact_time, total_query_time, total_wait_time,
+ *            avg_xact_count, avg_query_count, avg_recv, avg_sent,
+ *            avg_xact_time, avg_query_time, avg_wait_time
+ * 1.16: same as 1.15
+ * 1.17: same as 1.16
+ * 1.18: same as 1.17
+ * 1.19: same as 1.18
+ */
+
 func (c *collector) getPBStats() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
@@ -2941,20 +2938,18 @@ func (c *collector) getPBStats() {
 }
 
 /*
--[ RECORD 1 ]-------+----------
-name                | db1
-host                | localhost
-port                | 5432
-database            | db1
-force_user          |
-pool_size           | 5
-reserve_pool        | 0
-pool_mode           |
-max_connections     | 0
-current_connections | 0
-paused              | 0
-disabled            | 0
-*/
+ * PgBouncer "SHOW DATABASES" changes across recent PgBouncer versions:
+ *
+ * 1.15: (12) name, host, port, database, force_user, pool_size, reserve_pool,
+ *            pool_mode, max_connections, current_connections, paused, disabled
+ * 1.16: (13) name, host, port, database, force_user, pool_size, min_pool_size,
+ *            reserve_pool, pool_mode, max_connections, current_connections,
+ *            paused, disabled
+ * 1.17: same as 1.16
+ * 1.18: same as 1.17
+ * 1.19: same as 1.18
+ */
+
 func (c *collector) getPBDatabases() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
