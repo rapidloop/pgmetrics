@@ -19,7 +19,7 @@ package pgmetrics
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
 //
-//	  1.14 - PgBouncer 1.19
+//	  1.14 - PgBouncer 1.19, Pgpool support
 //	  1.13 - Citus 11 support, Postgres 15
 //	  1.12 - Azure metrics, queryid in plan, progress views
 //	  1.11 - Postgres 14, PgBouncer 1.16, other attributes
@@ -173,6 +173,11 @@ type Model struct {
 	ClusterProgress     []ClusterProgressBackend     `json:"cluster_progress,omitempty"`
 	CopyProgress        []CopyProgressBackend        `json:"copy_progress,omitempty"`
 	CreateIndexProgress []CreateIndexProgressBackend `json:"create_index_progress,omitempty"`
+
+	// following fields are present only in schema 1.14 and later
+
+	// metrics from Pgpool
+	Pgpool *Pgpool `json:"pgpool,omitempty"`
 }
 
 // DatabaseByOID iterates over the databases in the model and returns the reference
@@ -252,6 +257,7 @@ type Metadata struct {
 	Local        bool     `json:"local"`         // was connected to a local postgres server?
 	UserAgent    string   `json:"user_agent"`    // "pgmetrics/1.8.1"
 	Username     string   `json:"user"`          // user that pgmetrics connected as
+	Mode         string   `json:"mode"`          // one of "postgres", "pgbouncer" or "pgpool", added schema 1.14
 }
 
 type SystemMetrics struct {
@@ -963,4 +969,68 @@ type CreateIndexProgressBackend struct {
 	TuplesDone       int64  `json:"tuples_done"`
 	PartitionsTotal  int64  `json:"partitions_total"`
 	PartitionsDone   int64  `json:"partitions_done"`
+}
+
+// Pgpool contains information collected from Pgpool using "SHOW POOL" commands.
+// Added in schema 1.14.
+type Pgpool struct {
+	Version    string           `json:"version"`
+	Backends   []PgpoolBackend  `json:"backends"`
+	QueryCache PgpoolQueryCache `json:"query_cache"`
+}
+
+// PgpoolBackend contains information related to a single backend that the
+// Pgpool server is configured to connect to.
+// Added in schema 1.14.
+type PgpoolBackend struct {
+	NodeID                   int     `json:"node_id"`
+	Hostname                 string  `json:"hostname"`
+	Port                     int     `json:"port"`
+	Status                   string  `json:"status"`
+	PgStatus                 string  `json:"pg_status,omitempty"` // pgpool >= v4.3
+	LBWeight                 float64 `json:"lb_weight"`
+	Role                     string  `json:"role"`
+	PgRole                   string  `json:"pg_role,omitempty"` // pgpool >= v4.3
+	SelectCount              int64   `json:"select_cnt"`
+	InsertCount              int64   `json:"insert_cnt,omitempty"` // pgpool >= v4.2
+	UpdateCount              int64   `json:"update_cnt,omitempty"` // pgpool >= v4.2
+	DeleteCount              int64   `json:"delete_cnt,omitempty"` // pgpool >= v4.2
+	DDLCount                 int64   `json:"ddl_cnt,omitempty"`    // pgpool >= v4.2
+	OtherCount               int64   `json:"other_cnt,omitempty"`  // pgpool >= v4.2
+	PanicCount               int64   `json:"panic_cnt,omitempty"`  // pgpool >= v4.2
+	FatalCount               int64   `json:"fatal_cnt,omitempty"`  // pgpool >= v4.2
+	ErrorCount               int64   `json:"error_cnt,omitempty"`  // pgpool >= v4.2
+	LoadBalanceNode          bool    `json:"load_balance_node"`
+	ReplicationDelay         int64   `json:"replication_delay"`
+	ReplicationState         string  `json:"replication_state,omitempty"`      // pgpool >= v4.1
+	ReplicationSyncState     string  `json:"replication_sync_state,omitempty"` // pgpool >= v4.1
+	LastStatusChange         int64   `json:"last_status_change"`
+	HCTotalCount             int64   `json:"total_count,omitempty"`                  // pgpool >= v4.2
+	HCSuccessCount           int64   `json:"success_count,omitempty"`                // pgpool >= v4.2
+	HCFailCount              int64   `json:"fail_count,omitempty"`                   // pgpool >= v4.2
+	HCSkipCount              int64   `json:"skip_count,omitempty"`                   // pgpool >= v4.2
+	HCRetryCount             int64   `json:"retry_count,omitempty"`                  // pgpool >= v4.2
+	HCAvgRetryCount          float64 `json:"average_retry_count,omitempty"`          // pgpool >= v4.2
+	HCMaxRetryCount          int64   `json:"max_retry_count,omitempty"`              // pgpool >= v4.2
+	HCMaxDurationMillis      int64   `json:"max_duration,omitempty"`                 // pgpool >= v4.2
+	HCMinDurationMillis      int64   `json:"min_duration,omitempty"`                 // pgpool >= v4.2
+	HCAvgDurationMillis      float64 `json:"average_duration,omitempty"`             // pgpool >= v4.2
+	HCLastHealthCheck        int64   `json:"last_health_check,omitempty"`            // pgpool >= v4.2
+	HCLastSuccessHealthCheck int64   `json:"last_successful_health_check,omitempty"` // pgpool >= v4.2
+	HCLastSkipHealthCheck    int64   `json:"last_skip_health_check,omitempty"`       // pgpool >= v4.2
+	HCLastFailedHealthCheck  int64   `json:"last_failed_health_check,omitempty"`     // pgpool >= v4.2
+}
+
+// PgpoolQueryCache contains in memory query cache statistics of Pgpool.
+// Added in schema 1.14.
+type PgpoolQueryCache struct {
+	NumCacheHits             int64   `json:"num_cache_hits"`
+	NumSelects               int64   `json:"num_selects"`
+	CacheHitRatio            float64 `json:"cache_hit_ratio"`
+	NumHashEntries           int64   `json:"num_hash_entries"`
+	UsedHashEntries          int64   `json:"used_hash_entries"`
+	NumCacheEntries          int64   `json:"num_cache_entries"`
+	UsedCacheEntriesSize     int64   `json:"used_cache_entries_size"`
+	FreeCacheEntriesSize     int64   `json:"free_cache_entries_size"`
+	FragmentCacheEntriesSize int64   `json:"fragment_cache_entries_size"`
 }

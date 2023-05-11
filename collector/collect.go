@@ -94,6 +94,7 @@ type CollectConfig struct {
 	RDSDBIdentifier string
 	AllDBs          bool
 	AzureResourceID string
+	Pgpool          bool // collect only pgpool information
 
 	// connection
 	Host     string
@@ -349,40 +350,51 @@ func (c *collector) collectFirst(db *sql.DB, o CollectConfig) {
 	c.stmtsLimit = o.StmtsLimit
 	c.logSpan = o.LogSpan
 
-	// current time is the report start time
+	// fill out some metadata fields
 	c.result.Metadata.At = time.Now().Unix()
 	c.result.Metadata.Version = pgmetrics.ModelSchemaVersion
+	c.getCurrentUser()
 
-	if len(c.dbnames) == 1 && c.dbnames[0] == "pgbouncer" {
+	// collect either postgres, pgbouncer or pgpool metrics
+	if o.Pgpool {
+		// pgpool mode:
+		c.result.Metadata.Mode = "pgpool"
+		c.collectPgpool()
+	} else if len(c.dbnames) == 1 && c.dbnames[0] == "pgbouncer" {
 		// pgbouncer mode:
+		c.result.Metadata.Mode = "pgbouncer"
 		c.collectPgBouncer()
 	} else {
 		// postgres mode:
-		// get settings and other configuration
-		c.getCurrentUser()
-		c.getSettings()
-		if v, err := strconv.Atoi(c.setting("server_version_num")); err != nil {
-			log.Fatalf("bad server_version_num: %v", err)
-		} else {
-			c.version = v
-		}
-		c.getLocal()
-		if c.local {
-			c.dataDir = c.setting("data_directory")
-			if len(c.dataDir) == 0 {
-				c.dataDir = os.Getenv("PGDATA")
-			}
-		}
-
-		c.collectCluster(o)
-		if c.local {
-			// Only implemented for Linux for now.
-			if runtime.GOOS == "linux" {
-				c.collectSystem(o)
-			}
-		}
-		c.collectDatabase(o)
+		c.result.Metadata.Mode = "postgres"
+		c.collectPostgres(o)
 	}
+}
+
+func (c *collector) collectPostgres(o CollectConfig) {
+	// get settings and other configuration
+	c.getSettings()
+	if v, err := strconv.Atoi(c.setting("server_version_num")); err != nil {
+		log.Fatalf("bad server_version_num: %v", err)
+	} else {
+		c.version = v
+	}
+	c.getLocal()
+	if c.local {
+		c.dataDir = c.setting("data_directory")
+		if len(c.dataDir) == 0 {
+			c.dataDir = os.Getenv("PGDATA")
+		}
+	}
+
+	c.collectCluster(o)
+	if c.local {
+		// Only implemented for Linux for now.
+		if runtime.GOOS == "linux" {
+			c.collectSystem(o)
+		}
+	}
+	c.collectDatabase(o)
 }
 
 func (c *collector) collectNext(db *sql.DB, o CollectConfig) {

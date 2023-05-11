@@ -69,6 +69,7 @@ Collection options:
       --log-span=MINS          examine the last MINS minutes of logs (default: 5)
       --aws-rds-dbid           AWS RDS/Aurora database instance identifier
       --az-resource            Azure resource ID
+      --pgpool                 collect only Pgpool metrics
 
 Output options:
   -f, --format=FORMAT          output format; "human", "json" or "csv" (default: "human")
@@ -221,6 +222,7 @@ func (o *options) parse() (args []string) {
 	s.UintVarLong(&o.CollectConfig.LogSpan, "log-span", 0, "")
 	s.StringVarLong(&o.CollectConfig.RDSDBIdentifier, "aws-rds-dbid", 0, "")
 	s.StringVarLong(&o.CollectConfig.AzureResourceID, "az-resource", 0, "")
+	s.BoolVarLong(&o.CollectConfig.Pgpool, "pgpool", 0, "").SetFlag()
 	// output
 	s.StringVarLong(&o.format, "format", 'f', "")
 	s.StringVarLong(&o.output, "output", 'o', "")
