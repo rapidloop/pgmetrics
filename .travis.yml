@@ -1,9 +1,0 @@
-language: go
-
-go:
-  - "1.19"
-  - "1.18"
-
-env:
-  - GO111MODULE=on
-

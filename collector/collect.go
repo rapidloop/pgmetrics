@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 RapidLoop, Inc.
+ * Copyright 2023 RapidLoop, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -987,26 +987,6 @@ func (c *collector) fillDatabaseSize(d *pgmetrics.Database) {
 	}
 }
 
-func (c *collector) fillTableSize(t *pgmetrics.Table) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
-	defer cancel()
-
-	q := `SELECT pg_table_size($1)`
-	if err := c.db.QueryRowContext(ctx, q, t.OID).Scan(&t.Size); err != nil {
-		t.Size = -1
-	}
-}
-
-func (c *collector) fillIndexSize(idx *pgmetrics.Index) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
-	defer cancel()
-
-	q := `SELECT pg_total_relation_size($1)`
-	if err := c.db.QueryRowContext(ctx, q, idx.OID).Scan(&idx.Size); err != nil {
-		idx.Size = -1
-	}
-}
-
 func (c *collector) getLastXactv95() {
 	// available only if "track_commit_timestamp" is set to "on"
 	if c.setting("track_commit_timestamp") != "on" {
@@ -1456,7 +1436,8 @@ func (c *collector) getTables(fillSize bool) {
 			COALESCE(IO.tidx_blks_read, 0), COALESCE(IO.tidx_blks_hit, 0),
 			C.relkind, C.relpersistence, C.relnatts, age(C.relfrozenxid),
 			C.relispartition, C.reltablespace, COALESCE(array_to_string(C.relacl, E'\n'), ''),
-			S.n_ins_since_vacuum
+			S.n_ins_since_vacuum,
+            CASE WHEN $1 THEN COALESCE(pg_table_size(S.relid), -1) ELSE -1 END
 		  FROM pg_stat_user_tables AS S
 			JOIN pg_statio_user_tables AS IO
 			ON S.relid = IO.relid
@@ -1472,13 +1453,12 @@ func (c *collector) getTables(fillSize bool) {
 	if c.version < pgv13 { // n_ins_since_vacuum only in pg >= 13
 		q = strings.Replace(q, "S.n_ins_since_vacuum", "0", 1)
 	}
-	rows, err := c.db.QueryContext(ctx, q)
+	rows, err := c.db.QueryContext(ctx, q, fillSize)
 	if err != nil {
 		log.Fatalf("pg_stat(io)_user_tables query failed: %v", err)
 	}
 	defer rows.Close()
 
-	startIdx := len(c.result.Tables)
 	for rows.Next() {
 		var t pgmetrics.Table
 		var tblspcOID int
@@ -1491,10 +1471,9 @@ func (c *collector) getTables(fillSize bool) {
 			&t.HeapBlksRead, &t.HeapBlksHit, &t.IdxBlksRead, &t.IdxBlksHit,
 			&t.ToastBlksRead, &t.ToastBlksHit, &t.TidxBlksRead, &t.TidxBlksHit,
 			&t.RelKind, &t.RelPersistence, &t.RelNAtts, &t.AgeRelFrozenXid,
-			&t.RelIsPartition, &tblspcOID, &t.ACL, &t.NInsSinceVacuum); err != nil {
+			&t.RelIsPartition, &tblspcOID, &t.ACL, &t.NInsSinceVacuum, &t.Size); err != nil {
 			log.Fatalf("pg_stat(io)_user_tables query failed: %v", err)
 		}
-		t.Size = -1  // will be filled in later if asked for
 		t.Bloat = -1 // will be filled in later
 		if tblspcOID != 0 {
 			for _, ts := range c.result.Tablespaces {
@@ -1511,13 +1490,6 @@ func (c *collector) getTables(fillSize bool) {
 	if err := rows.Err(); err != nil {
 		log.Fatalf("pg_stat(io)_user_tables query failed: %v", err)
 	}
-
-	if !fillSize {
-		return
-	}
-	for i := startIdx; i < len(c.result.Tables); i++ {
-		c.fillTableSize(&c.result.Tables[i])
-	}
 }
 
 func (c *collector) getIndexes(fillSize bool) {
@@ -1528,30 +1500,29 @@ func (c *collector) getIndexes(fillSize bool) {
 			current_database(), S.idx_scan, S.idx_tup_read, S.idx_tup_fetch,
 			pg_stat_get_blocks_fetched(S.indexrelid) - pg_stat_get_blocks_hit(S.indexrelid) AS idx_blks_read,
 			pg_stat_get_blocks_hit(S.indexrelid) AS idx_blks_hit,
-			C.relnatts, AM.amname, C.reltablespace
+			C.relnatts, AM.amname, C.reltablespace,
+			CASE WHEN $1 THEN COALESCE(pg_total_relation_size(S.indexrelid), -1) ELSE -1 END
 		FROM pg_stat_user_indexes AS S
 			JOIN pg_class AS C
 			ON S.indexrelid = C.oid
 			JOIN pg_am AS AM
 			ON C.relam = AM.oid
 		ORDER BY S.relid ASC`
-	rows, err := c.db.QueryContext(ctx, q)
+	rows, err := c.db.QueryContext(ctx, q, fillSize)
 	if err != nil {
 		log.Fatalf("pg_stat_user_indexes query failed: %v", err)
 	}
 	defer rows.Close()
 
-	startIdx := len(c.result.Indexes)
 	for rows.Next() {
 		var idx pgmetrics.Index
 		var tblspcOID int
 		if err := rows.Scan(&idx.TableOID, &idx.OID, &idx.SchemaName,
 			&idx.TableName, &idx.Name, &idx.DBName, &idx.IdxScan,
 			&idx.IdxTupRead, &idx.IdxTupFetch, &idx.IdxBlksRead,
-			&idx.IdxBlksHit, &idx.RelNAtts, &idx.AMName, &tblspcOID); err != nil {
+			&idx.IdxBlksHit, &idx.RelNAtts, &idx.AMName, &tblspcOID, &idx.Size); err != nil {
 			log.Fatalf("pg_stat_user_indexes query failed: %v", err)
 		}
-		idx.Size = -1  // will be filled in later if asked for
 		idx.Bloat = -1 // will be filled in later
 		if tblspcOID != 0 {
 			for _, ts := range c.result.Tablespaces {
@@ -1567,13 +1538,6 @@ func (c *collector) getIndexes(fillSize bool) {
 	}
 	if err := rows.Err(); err != nil {
 		log.Fatalf("pg_stat_user_indexes query failed: %v", err)
-	}
-
-	if !fillSize {
-		return
-	}
-	for i := startIdx; i < len(c.result.Indexes); i++ {
-		c.fillIndexSize(&c.result.Indexes[i])
 	}
 }
 
