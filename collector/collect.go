@@ -2459,7 +2459,7 @@ func (c *collector) getProgressAnalyze() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	q := `SELECT pid, datname, relid::int, COALESCE(phase, ''),
+	q := `SELECT pid, datname, COALESCE(relid::int, 0::int), COALESCE(phase, ''),
 				 COALESCE(sample_blks_total, 0::bigint),
 				 COALESCE(sample_blks_scanned, 0::bigint),
 				 COALESCE(ext_stats_total, 0::bigint),
