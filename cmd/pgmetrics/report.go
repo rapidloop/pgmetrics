@@ -44,6 +44,8 @@ const (
 func writeHumanTo(fd io.Writer, o options, result *pgmetrics.Model) {
 	if result.PgBouncer != nil {
 		pgbouncerWriteHumanTo(fd, o, result)
+	} else if result.Pgpool != nil {
+		pgpoolWriteHumanTo(fd, o, result)
 	} else {
 		postgresWriteHumanTo(fd, o, result)
 	}
@@ -1536,6 +1538,45 @@ Current Connections:
 }
 
 //------------------------------------------------------------------------------
+// Pgpool
+
+func pgpoolWriteHumanTo(fd io.Writer, o options, result *pgmetrics.Model) {
+	fmt.Fprintf(fd, `
+pgmetrics run at: %s
+
+Pgpool Version:   %s
+`,
+		fmtTimeAndSince(result.Metadata.At), result.Pgpool.Version,
+	)
+
+	// backends
+	var tw tableWriter
+	fmt.Fprintf(fd, `
+Pgpool Backends:
+`)
+	tw.add("Node ID", "Host", "Port", "Status", "Role", "LB Weight", "Last Status Change")
+	for _, b := range result.Pgpool.Backends {
+		tw.add(b.NodeID, b.Hostname, b.Port, b.Status, b.Role, b.LBWeight,
+			fmtTime(b.LastStatusChange))
+	}
+	tw.write(fd, "    ")
+
+	// backend statement counts
+	fmt.Fprintf(fd, `
+Pgpool Backend Statement Counts:
+`)
+	tw.clear()
+	tw.add("Node", "SELECT", "INSERT", "UPDATE", "DELETE", "DDL", "Other", "Panic", "Fatal", "Error")
+	for _, b := range result.Pgpool.Backends {
+		tw.add(fmt.Sprintf("%d (%s:%d)", b.NodeID, b.Hostname, b.Port),
+			b.SelectCount, b.InsertCount, b.UpdateCount, b.DeleteCount,
+			b.DDLCount, b.OtherCount, b.PanicCount, b.FatalCount, b.ErrorCount)
+	}
+	tw.write(fd, "    ")
+}
+
+//------------------------------------------------------------------------------
+// helper functions
 
 func fmtXIDRange(oldest, next int64) string {
 	if oldest < 3 || oldest > math.MaxUint32 || next < 3 || next > math.MaxUint32 || oldest == next {
