@@ -146,7 +146,7 @@ func pgpoolScanTime(val string) (out int64) {
  */
 
 func (c *collector) getPPHCStats(semversion string) {
-	if semver.Compare(semversion, "v4.1") <= 0 { // is version <= v4.1
+	if semver.Compare(semversion, "v4.2") < 0 { // is version < 4.2
 		return // no health check stats
 	}
 
@@ -217,7 +217,7 @@ func (c *collector) getPPHCStats(semversion string) {
  */
 
 func (c *collector) getPPBEStats(semversion string) {
-	if semver.Compare(semversion, "v4.1") <= 0 { // is version <= v4.1
+	if semver.Compare(semversion, "v4.2") < 0 { // is version < v4.2
 		return // no backend stats
 	}
 
