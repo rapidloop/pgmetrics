@@ -71,7 +71,7 @@ func (ac *awsCollector) collect(dbid string, out *pgmetrics.RDS) (err error) {
 	avmetrics, err := cwsvc.ListMetrics(&cloudwatch.ListMetricsInput{
 		Namespace: aws.String("AWS/RDS"),
 		Dimensions: []*cloudwatch.DimensionFilter{
-			&cloudwatch.DimensionFilter{
+			{
 				Name:  aws.String("DBInstanceIdentifier"),
 				Value: aws.String(dbid),
 			},
@@ -92,7 +92,7 @@ func (ac *awsCollector) collect(dbid string, out *pgmetrics.RDS) (err error) {
 			MetricStat: &cloudwatch.MetricStat{
 				Metric: &cloudwatch.Metric{
 					Dimensions: []*cloudwatch.Dimension{
-						&cloudwatch.Dimension{
+						{
 							Name:  aws.String("DBInstanceIdentifier"),
 							Value: aws.String(dbid),
 						},
