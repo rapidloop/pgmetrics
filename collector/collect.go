@@ -20,7 +20,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"math"
 	"os"
@@ -3014,13 +3013,17 @@ func fileExists(f string) bool {
 }
 
 func getRecentFile(d string) (f string) {
-	files, err := ioutil.ReadDir(d)
+	files, err := os.ReadDir(d)
 	if err != nil {
 		return
 	}
 	var max time.Time
 	var fname string
-	for _, finfo := range files {
+	for _, entry := range files {
+		finfo, err := entry.Info()
+		if err != nil {
+			continue
+		}
 		if t := finfo.ModTime(); t.After(max) {
 			max = t
 			fname = finfo.Name()
@@ -3052,7 +3055,7 @@ func (c *collector) collectLogs(o CollectConfig) {
 
 	// 2. use the files from the user-supplied dirname (--log-dir)
 	if len(logfiles) == 0 && len(o.LogDir) > 0 {
-		files, err := ioutil.ReadDir(o.LogDir)
+		files, err := os.ReadDir(o.LogDir)
 		if err != nil {
 			log.Printf("warning: failed to read specified log dir: %v", err)
 			return
