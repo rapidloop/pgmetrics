@@ -136,12 +136,10 @@ func (c *collector) processLogBuf(start time.Time, bigbuf []byte) (err error) {
 	count := 0
 	pos := c.rxPrefix.FindIndex(bigbuf)
 	for len(pos) == 2 && len(bigbuf) > 0 {
-		// match again for submatches, can't do this in one go :-(
-		// TODO: no longer the case, use FindSubmatchIndex
 		match := c.rxPrefix.FindSubmatch(bigbuf[pos[0]:])
 		t, user, db, qid, err := getMatchData(match, c.rxPrefix)
 		if err != nil {
-			return nil
+			return err
 		}
 		var line string
 		// seek to start of next line

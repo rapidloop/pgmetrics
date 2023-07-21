@@ -3143,7 +3143,9 @@ func (c *collector) collectFromRDS(o CollectConfig) {
 		start := time.Now().Add(-window)
 
 		err = ac.collectLogs(dbid, start, func(lines []byte) {
-			c.processLogBuf(start, lines)
+			if err := c.processLogBuf(start, lines); err != nil {
+				log.Printf("warning: %v", err)
+			}
 		})
 	}
 }
