@@ -353,12 +353,12 @@ func (c *collector) collectFirst(db *sql.DB, o CollectConfig) {
 	// fill out some metadata fields
 	c.result.Metadata.At = time.Now().Unix()
 	c.result.Metadata.Version = pgmetrics.ModelSchemaVersion
-	c.getCurrentUser()
 
 	// collect either postgres, pgbouncer or pgpool metrics
 	if o.Pgpool {
 		// pgpool mode:
 		c.result.Metadata.Mode = "pgpool"
+		c.getCurrentUser()
 		c.collectPgpool()
 	} else if len(c.dbnames) == 1 && c.dbnames[0] == "pgbouncer" {
 		// pgbouncer mode:
@@ -367,6 +367,7 @@ func (c *collector) collectFirst(db *sql.DB, o CollectConfig) {
 	} else {
 		// postgres mode:
 		c.result.Metadata.Mode = "postgres"
+		c.getCurrentUser()
 		c.collectPostgres(o)
 	}
 }
@@ -2674,6 +2675,7 @@ func (c *collector) collectPgBouncer() {
  *            sv_being_canceled, sv_idle, sv_used, sv_tested, sv_login, maxwait,
  *            maxwait_us, pool_mode
  * 1.19: same as 1.18
+ * 1.20: same as 1.19
  */
 
 func (c *collector) getPBPools() {
@@ -2736,6 +2738,7 @@ func (c *collector) getPBPools() {
  *            connect_time, request_time, wait, wait_us, close_needed, ptr,
  *            link, remote_pid, tls, application_name
  * 1.19: same as 1.18
+ * 1.20: same as 1.19
  */
 
 func (c *collector) getPBServers() {
@@ -2804,6 +2807,7 @@ func (c *collector) getPBServers() {
  *            connect_time, request_time, wait, wait_us, close_needed, ptr,
  *            link, remote_pid, tls, application_name
  * 1.19: same as 1.18
+ * 1.20: same as 1.19
  */
 
 func (c *collector) getPBClients() {
@@ -2878,6 +2882,7 @@ func (c *collector) getPBClients() {
  * 1.17: same as 1.16
  * 1.18: same as 1.17
  * 1.19: same as 1.18
+ * 1.20: same as 1.19
  */
 
 func (c *collector) getPBStats() {
@@ -2924,6 +2929,7 @@ func (c *collector) getPBStats() {
  * 1.17: same as 1.16
  * 1.18: same as 1.17
  * 1.19: same as 1.18
+ * 1.20: same as 1.19
  */
 
 func (c *collector) getPBDatabases() {

@@ -693,10 +693,10 @@ type PgBouncerPool struct {
 	ClCancelReq int `json:"cl_cancel_req,omitempty"` // only in pgbouncer v1.16 & v1.17
 
 	// following fields present only in schema 1.14 and later
-	ClActiveCancelReq  int `json:cl_active_cancel_req",omitempty"`  // only in pgbouncer >= v1.18
-	ClWaitingCancelReq int `json:cl_waiting_cancel_req",omitempty"` // only in pgbouncer >= v1.18
-	SvActiveCancel     int `json:sv_active_cancel",omitempty"`      // only in pgbouncer >= v1.18
-	SvBeingCanceled    int `json:sv_being_canceled",omitempty"`     // only in pgbouncer >= v1.18
+	ClActiveCancelReq  int `json:"cl_active_cancel_req,omitempty"`  // only in pgbouncer >= v1.18
+	ClWaitingCancelReq int `json:"cl_waiting_cancel_req,omitempty"` // only in pgbouncer >= v1.18
+	SvActiveCancel     int `json:"sv_active_cancel,omitempty"`      // only in pgbouncer >= v1.18
+	SvBeingCanceled    int `json:"sv_being_canceled,omitempty"`     // only in pgbouncer >= v1.18
 }
 
 // PgBouncerDatabase contains information about one database of PgBouncer
