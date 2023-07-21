@@ -19,7 +19,6 @@ package collector
 import (
 	"bufio"
 	"bytes"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -84,7 +83,7 @@ func (c *collector) getCPUs() {
 }
 
 func (c *collector) getLoadAvg() {
-	raw, err := ioutil.ReadFile("/proc/loadavg")
+	raw, err := os.ReadFile("/proc/loadavg")
 	if err != nil {
 		return
 	}
@@ -100,7 +99,7 @@ func (c *collector) getLoadAvg() {
 }
 
 func (c *collector) getMemory() {
-	raw, err := ioutil.ReadFile("/proc/meminfo")
+	raw, err := os.ReadFile("/proc/meminfo")
 	if err != nil {
 		return
 	}
