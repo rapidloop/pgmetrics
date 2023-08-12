@@ -510,6 +510,13 @@ func (c *collector) collectCluster(o CollectConfig) {
 // info and stats for the current database
 func (c *collector) collectDatabase(o CollectConfig) {
 	currdb := c.getCurrentDatabase()
+	for _, d := range c.result.Metadata.CollectedDBs {
+		if currdb == d { // don't collect from same db twice
+			return
+		}
+	}
+	c.result.Metadata.CollectedDBs = append(c.result.Metadata.CollectedDBs, currdb)
+
 	if !arrayHas(o.Omit, "tables") {
 		c.getTables(!o.NoSizes)
 		// partition information, added schema v1.2
@@ -1424,7 +1431,6 @@ func (c *collector) getCurrentDatabase() (dbname string) {
 	if err := c.db.QueryRowContext(ctx, q).Scan(&dbname); err != nil {
 		log.Fatalf("current_database failed: %v", err)
 	}
-	c.result.Metadata.CollectedDBs = append(c.result.Metadata.CollectedDBs, dbname)
 	return
 }
 
