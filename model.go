@@ -19,6 +19,7 @@ package pgmetrics
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
 //
+//	  1.15 - Pgpool ReplicationDelaySeconds
 //	  1.14 - PgBouncer 1.19, Pgpool support
 //	  1.13 - Citus 11 support, Postgres 15
 //	  1.12 - Azure metrics, queryid in plan, progress views
@@ -1001,7 +1002,7 @@ type PgpoolBackend struct {
 	FatalCount               int64   `json:"fatal_cnt,omitempty"`  // pgpool >= v4.2
 	ErrorCount               int64   `json:"error_cnt,omitempty"`  // pgpool >= v4.2
 	LoadBalanceNode          bool    `json:"load_balance_node"`
-	ReplicationDelay         int64   `json:"replication_delay"`
+	ReplicationDelay         int64   `json:"replication_delay,omitempty"`
 	ReplicationState         string  `json:"replication_state,omitempty"`      // pgpool >= v4.1
 	ReplicationSyncState     string  `json:"replication_sync_state,omitempty"` // pgpool >= v4.1
 	LastStatusChange         int64   `json:"last_status_change"`
@@ -1019,6 +1020,8 @@ type PgpoolBackend struct {
 	HCLastSuccessHealthCheck int64   `json:"last_successful_health_check,omitempty"` // pgpool >= v4.2
 	HCLastSkipHealthCheck    int64   `json:"last_skip_health_check,omitempty"`       // pgpool >= v4.2
 	HCLastFailedHealthCheck  int64   `json:"last_failed_health_check,omitempty"`     // pgpool >= v4.2
+	// following fields present only in schema 1.15 and later
+	ReplicationDelaySeconds float64 `json:"replication_delay_secs,omitempty"`
 }
 
 // PgpoolQueryCache contains in memory query cache statistics of Pgpool.

@@ -97,20 +97,20 @@ func (c *collector) getPPNodes() {
 
 	for rows.Next() {
 		var b pgmetrics.PgpoolBackend
-		var lastStatusChange string
+		var lastStatusChange, replicationDelay string
 		if ncols == 10 {
 			err = rows.Scan(&b.NodeID, &b.Hostname, &b.Port, &b.Status,
 				&b.LBWeight, &b.Role, &b.SelectCount, &b.LoadBalanceNode,
-				&b.ReplicationDelay, &lastStatusChange)
+				&replicationDelay, &lastStatusChange)
 		} else if ncols == 12 {
 			err = rows.Scan(&b.NodeID, &b.Hostname, &b.Port, &b.Status,
 				&b.LBWeight, &b.Role, &b.SelectCount, &b.LoadBalanceNode,
-				&b.ReplicationDelay, &b.ReplicationState, &b.ReplicationSyncState,
+				&replicationDelay, &b.ReplicationState, &b.ReplicationSyncState,
 				&lastStatusChange)
 		} else if ncols == 14 {
 			err = rows.Scan(&b.NodeID, &b.Hostname, &b.Port, &b.Status,
 				&b.PgStatus, &b.LBWeight, &b.Role, &b.PgRole, &b.SelectCount,
-				&b.LoadBalanceNode, &b.ReplicationDelay, &b.ReplicationState,
+				&b.LoadBalanceNode, &replicationDelay, &b.ReplicationState,
 				&b.ReplicationSyncState, &lastStatusChange)
 		} else {
 			log.Fatalf("pgpool: unsupported number of columns %d in 'SHOW POOL_NODES'", ncols)
@@ -119,6 +119,13 @@ func (c *collector) getPPNodes() {
 			log.Fatalf("pgpool: show pool_nodes query scan failed: %v", err)
 		}
 		b.LastStatusChange = pgpoolScanTime(lastStatusChange)
+		if strings.Contains(replicationDelay, "second") {
+			if parts := strings.Fields(replicationDelay); len(parts) == 2 {
+				b.ReplicationDelaySeconds, _ = strconv.ParseFloat(parts[0], 64)
+			}
+		} else {
+			b.ReplicationDelay, _ = strconv.ParseInt(replicationDelay, 10, 64)
+		}
 		c.result.Pgpool.Backends = append(c.result.Pgpool.Backends, b)
 	}
 	if err := rows.Err(); err != nil {
