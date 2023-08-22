@@ -19,6 +19,7 @@ package collector
 import (
 	"context"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -170,12 +171,13 @@ func (c *collector) getPPHCStats(semversion string) {
 	for rows.Next() {
 		var b pgmetrics.PgpoolBackend
 		var lastStatusChange, lastHealthCheck, lastSuccessHealthCheck,
-			lastSkipHealthCheck, lastFailedHealthCheck string
+			lastSkipHealthCheck, lastFailedHealthCheck, avgRetryCount,
+			avgDuration string
 		err = rows.Scan(&b.NodeID, &b.Hostname, &b.Port, &b.Status,
 			&b.Role, &lastStatusChange, &b.HCTotalCount, &b.HCSuccessCount,
-			&b.HCFailCount, &b.HCSkipCount, &b.HCRetryCount, &b.HCAvgRetryCount,
+			&b.HCFailCount, &b.HCSkipCount, &b.HCRetryCount, &avgRetryCount,
 			&b.HCMaxRetryCount, &b.HCMaxDurationMillis, &b.HCMinDurationMillis,
-			&b.HCAvgDurationMillis, &lastHealthCheck, &lastSuccessHealthCheck,
+			&avgDuration, &lastHealthCheck, &lastSuccessHealthCheck,
 			&lastSkipHealthCheck, &lastFailedHealthCheck)
 		if err != nil {
 			log.Fatalf("pgpool: show pool_health_check_stats query scan failed: %v", err)
@@ -188,11 +190,11 @@ func (c *collector) getPPHCStats(semversion string) {
 				b0.HCFailCount = b.HCFailCount
 				b0.HCSkipCount = b.HCSkipCount
 				b0.HCRetryCount = b.HCRetryCount
-				b0.HCAvgRetryCount = b.HCAvgRetryCount
+				b0.HCAvgRetryCount, _ = strconv.ParseFloat(avgRetryCount, 64)
 				b0.HCMaxRetryCount = b.HCMaxRetryCount
 				b0.HCMaxDurationMillis = b.HCMaxDurationMillis
 				b0.HCMinDurationMillis = b.HCMinDurationMillis
-				b0.HCAvgDurationMillis = b.HCAvgDurationMillis
+				b0.HCAvgDurationMillis, _ = strconv.ParseFloat(avgDuration, 64)
 				b0.HCLastHealthCheck = pgpoolScanTime(lastHealthCheck)
 				b0.HCLastSuccessHealthCheck = pgpoolScanTime(lastSuccessHealthCheck)
 				b0.HCLastSkipHealthCheck = pgpoolScanTime(lastSkipHealthCheck)
