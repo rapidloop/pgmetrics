@@ -134,8 +134,9 @@ func (c *collector) getPPNodes() {
 }
 
 func pgpoolScanTime(val string) (out int64) {
+	_, offset := time.Now().Zone()
 	if t, err := time.Parse("2006-01-02 15:04:05", val); err == nil {
-		out = t.Unix()
+		out = t.Unix() - int64(offset)
 	}
 	return
 }
