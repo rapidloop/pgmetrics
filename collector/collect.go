@@ -1146,8 +1146,8 @@ func (c *collector) getActivityv96() {
 			COALESCE(EXTRACT(EPOCH FROM query_start)::bigint, 0),
 			COALESCE(EXTRACT(EPOCH FROM state_change)::bigint, 0),
 			COALESCE(wait_event_type, ''), COALESCE(wait_event, ''),
-			COALESCE(state, ''), COALESCE(backend_xid, ''),
-			COALESCE(backend_xmin, ''), LEFT(COALESCE(query, ''), $1),
+			COALESCE(state, ''), COALESCE(backend_xid::text, ''),
+			COALESCE(backend_xmin::text, ''), LEFT(COALESCE(query, ''), $1),
 			@queryid@
 		  FROM pg_stat_activity`
 	if c.version >= pgv14 { // query_id only in pg >= 14
@@ -1167,12 +1167,15 @@ func (c *collector) getActivityv96() {
 
 	for rows.Next() {
 		var b pgmetrics.Backend
+		var backendXid, backendXmin string
 		if err := rows.Scan(&b.DBName, &b.RoleName, &b.ApplicationName,
 			&b.PID, &b.ClientAddr, &b.BackendStart, &b.XactStart, &b.QueryStart,
 			&b.StateChange, &b.WaitEventType, &b.WaitEvent, &b.State,
-			&b.BackendXid, &b.BackendXmin, &b.Query, &b.QueryID); err != nil {
+			&backendXid, &backendXmin, &b.Query, &b.QueryID); err != nil {
 			log.Fatalf("pg_stat_activity query failed: %v", err)
 		}
+		b.BackendXid, _ = strconv.Atoi(backendXid)
+		b.BackendXmin, _ = strconv.Atoi(backendXmin)
 		c.result.Backends = append(c.result.Backends, b)
 	}
 	if err := rows.Err(); err != nil {
