@@ -312,6 +312,8 @@ type ReplicationSlot struct {
 	WALStatus   string `json:"wal_status,omitempty"`    // >= pg13
 	SafeWALSize int64  `json:"safe_wal_size,omitempty"` // >= pg13
 	TwoPhase    bool   `json:"two_phase,omitempty"`     // >= pg14
+	// following fields present only in schema 1.16 and later
+	Conflicting bool `json:"conflicting,omitempty"` // >= pg16
 }
 
 type Role struct {

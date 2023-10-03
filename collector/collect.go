@@ -1779,7 +1779,7 @@ func (c *collector) getReplicationSlotsv94() {
 	q := `SELECT slot_name, COALESCE(plugin, ''), slot_type,
 			COALESCE(database, ''), active, xmin, catalog_xmin,
 			restart_lsn, confirmed_flush_lsn, temporary,
-			@wal_status@, @safe_wal_size@, two_phase
+			@wal_status@, @safe_wal_size@, two_phase, @conflicting@
 		  FROM pg_replication_slots
 		  ORDER BY slot_name ASC`
 	if c.version < pgv96 { // confirmed_flush_lsn only in pg >= 9.6
@@ -1798,6 +1798,11 @@ func (c *collector) getReplicationSlotsv94() {
 	if c.version < pgv14 { // two_phase only in pg >= 14
 		q = strings.Replace(q, "two_phase", `FALSE`, 1)
 	}
+	if c.version < pgv16 { // conflicting only in pg >= 16
+		q = strings.Replace(q, "@conflicting@", `FALSE`, 1)
+	} else {
+		q = strings.Replace(q, "@conflicting@", `COALESCE(conflicting, FALSE)`, 1)
+	}
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
 		log.Printf("warning: pg_replication_slots query failed: %v", err)
@@ -1811,7 +1816,8 @@ func (c *collector) getReplicationSlotsv94() {
 		var rlsn, cflsn sql.NullString
 		if err := rows.Scan(&rs.SlotName, &rs.Plugin, &rs.SlotType,
 			&rs.DBName, &rs.Active, &xmin, &cXmin, &rlsn, &cflsn,
-			&rs.Temporary, &rs.WALStatus, &rs.SafeWALSize, &rs.TwoPhase); err != nil {
+			&rs.Temporary, &rs.WALStatus, &rs.SafeWALSize, &rs.TwoPhase,
+			&rs.Conflicting); err != nil {
 			log.Fatalf("pg_replication_slots query failed: %v", err)
 		}
 		rs.Xmin = int(xmin.Int64)
