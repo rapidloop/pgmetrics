@@ -1534,7 +1534,7 @@ func (c *collector) getIndexes(fillSize bool) {
 			current_database(), S.idx_scan, S.idx_tup_read, S.idx_tup_fetch,
 			pg_stat_get_blocks_fetched(S.indexrelid) - pg_stat_get_blocks_hit(S.indexrelid) AS idx_blks_read,
 			pg_stat_get_blocks_hit(S.indexrelid) AS idx_blks_hit,
-			C.relnatts, AM.amname, C.reltablespace,
+			C.relnatts, AM.amname, C.reltablespace, @last_idx_scan@,
 			CASE WHEN $1 THEN COALESCE(pg_total_relation_size(S.indexrelid), -1) ELSE -1 END
 		FROM pg_stat_user_indexes AS S
 			JOIN pg_class AS C
@@ -1542,6 +1542,11 @@ func (c *collector) getIndexes(fillSize bool) {
 			JOIN pg_am AS AM
 			ON C.relam = AM.oid
 		ORDER BY S.relid ASC`
+	if c.version < pgv16 { // last_idx_scan only in pg >= 16
+		q = strings.Replace(q, "@last_idx_scan@", "0", 1)
+	} else {
+		q = strings.Replace(q, "@last_idx_scan@", "COALESCE(EXTRACT(EPOCH FROM S.last_idx_scan)::bigint, 0)", 1)
+	}
 	rows, err := c.db.QueryContext(ctx, q, fillSize)
 	if err != nil {
 		log.Fatalf("pg_stat_user_indexes query failed: %v", err)
@@ -1554,7 +1559,8 @@ func (c *collector) getIndexes(fillSize bool) {
 		if err := rows.Scan(&idx.TableOID, &idx.OID, &idx.SchemaName,
 			&idx.TableName, &idx.Name, &idx.DBName, &idx.IdxScan,
 			&idx.IdxTupRead, &idx.IdxTupFetch, &idx.IdxBlksRead,
-			&idx.IdxBlksHit, &idx.RelNAtts, &idx.AMName, &tblspcOID, &idx.Size); err != nil {
+			&idx.IdxBlksHit, &idx.RelNAtts, &idx.AMName, &tblspcOID,
+			&idx.LastIdxScan, &idx.Size); err != nil {
 			log.Fatalf("pg_stat_user_indexes query failed: %v", err)
 		}
 		idx.Bloat = -1 // will be filled in later

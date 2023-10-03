@@ -451,6 +451,8 @@ type Index struct {
 	TablespaceName string `json:"tablespace_name"`
 	// following fields present only in schema 1.8 and later
 	Definition string `json:"def"`
+	// following fields present only in schema 1.16 and later
+	LastIdxScan int64 `json:"last_idx_scan,omitempty"` // pg >= v16
 }
 
 type Sequence struct {
