@@ -47,6 +47,7 @@ const (
 	pgv13 = 13_00_00
 	pgv14 = 14_00_00
 	pgv15 = 15_00_00
+	pgv16 = 16_00_00
 )
 
 // See https://www.postgresql.org/docs/current/static/libpq-connect.html#LIBPQ-CONNSTRING
@@ -1458,6 +1459,7 @@ func (c *collector) getTables(fillSize bool) {
 			C.relkind, C.relpersistence, C.relnatts, age(C.relfrozenxid),
 			C.relispartition, C.reltablespace, COALESCE(array_to_string(C.relacl, E'\n'), ''),
 			S.n_ins_since_vacuum,
+			@last_seq_scan@, @last_idx_scan@, @n_tup_newpage_upd@,
             CASE WHEN $1 THEN COALESCE(pg_table_size(S.relid), -1) ELSE -1 END
 		  FROM pg_stat_user_tables AS S
 			JOIN pg_statio_user_tables AS IO
@@ -1473,6 +1475,15 @@ func (c *collector) getTables(fillSize bool) {
 	}
 	if c.version < pgv13 { // n_ins_since_vacuum only in pg >= 13
 		q = strings.Replace(q, "S.n_ins_since_vacuum", "0", 1)
+	}
+	if c.version < pgv16 { // last_seq_scan, last_idx_scan, n_tup_newpage_upd only in pg >= 16
+		q = strings.Replace(q, "@last_seq_scan@", "0", 1)
+		q = strings.Replace(q, "@last_idx_scan@", "0", 1)
+		q = strings.Replace(q, "@n_tup_newpage_upd@", "0", 1)
+	} else {
+		q = strings.Replace(q, "@last_seq_scan@", "COALESCE(EXTRACT(EPOCH FROM S.last_seq_scan)::bigint, 0)", 1)
+		q = strings.Replace(q, "@last_idx_scan@", "COALESCE(EXTRACT(EPOCH FROM S.last_idx_scan)::bigint, 0)", 1)
+		q = strings.Replace(q, "@n_tup_newpage_upd@", "COALESCE(S.n_tup_newpage_upd, 0)", 1)
 	}
 	rows, err := c.db.QueryContext(ctx, q, fillSize)
 	if err != nil {
@@ -1492,7 +1503,9 @@ func (c *collector) getTables(fillSize bool) {
 			&t.HeapBlksRead, &t.HeapBlksHit, &t.IdxBlksRead, &t.IdxBlksHit,
 			&t.ToastBlksRead, &t.ToastBlksHit, &t.TidxBlksRead, &t.TidxBlksHit,
 			&t.RelKind, &t.RelPersistence, &t.RelNAtts, &t.AgeRelFrozenXid,
-			&t.RelIsPartition, &tblspcOID, &t.ACL, &t.NInsSinceVacuum, &t.Size); err != nil {
+			&t.RelIsPartition, &tblspcOID, &t.ACL, &t.NInsSinceVacuum,
+			&t.LastSeqScan, &t.LastIdxScan, &t.NTupNewpageUpd,
+			&t.Size); err != nil {
 			log.Fatalf("pg_stat(io)_user_tables query failed: %v", err)
 		}
 		t.Bloat = -1 // will be filled in later

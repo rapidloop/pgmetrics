@@ -19,24 +19,25 @@ package pgmetrics
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
 //
-//	  1.15 - Pgpool ReplicationDelaySeconds
-//	  1.14 - PgBouncer 1.19, Pgpool support
-//	  1.13 - Citus 11 support, Postgres 15
-//	  1.12 - Azure metrics, queryid in plan, progress views
-//	  1.11 - Postgres 14, PgBouncer 1.16, other attributes
-//	  1.10 - New fields in pg_stat_statements for Postgres 13
-//	  1.9 - Postgres 13, Citus support
-//	  1.8 - AWS RDS/EnhancedMonitoring metrics, index defn,
-//					backend type counts, slab memory (linux), user agent
-//	  1.7 - query execution plans, autovacuum, deadlocks, table acl
-//	  1.6 - added highest WAL segment number
-//	  1.5 - add PID to replication_outgoing entries
-//	  1.4 - pgbouncer information
-//	  1.3 - locks information
-//	  1.2 - more table and index attributes
-//	  1.1 - added NotificationQueueUsage and Statements
-//	  1.0 - initial release
-const ModelSchemaVersion = "1.14"
+//	1.16 - Postgres 16 support
+//	1.15 - Pgpool ReplicationDelaySeconds
+//	1.14 - PgBouncer 1.19, Pgpool support
+//	1.13 - Citus 11 support, Postgres 15
+//	1.12 - Azure metrics, queryid in plan, progress views
+//	1.11 - Postgres 14, PgBouncer 1.16, other attributes
+//	1.10 - New fields in pg_stat_statements for Postgres 13
+//	1.9 - Postgres 13, Citus support
+//	1.8 - AWS RDS/EnhancedMonitoring metrics, index defn,
+//				backend type counts, slab memory (linux), user agent
+//	1.7 - query execution plans, autovacuum, deadlocks, table acl
+//	1.6 - added highest WAL segment number
+//	1.5 - add PID to replication_outgoing entries
+//	1.4 - pgbouncer information
+//	1.3 - locks information
+//	1.2 - more table and index attributes
+//	1.1 - added NotificationQueueUsage and Statements
+//	1.0 - initial release
+const ModelSchemaVersion = "1.16"
 
 // Model contains the entire information collected by a single run of
 // pgmetrics. It can be converted to and from json without loss of
@@ -424,6 +425,10 @@ type Table struct {
 	ACL string `json:"acl,omitempty"`
 	// following fields present only in schema 1.11 and later
 	NInsSinceVacuum int64 `json:"n_ins_since_vacuum,omitempty"` // pg >= v13
+	// following fields present only in schema 1.16 and later
+	LastSeqScan    int64 `json:"last_seq_scan,omitempty"`     // pg >= v16
+	LastIdxScan    int64 `json:"last_idx_scan,omitempty"`     // pg >= v16
+	NTupNewpageUpd int64 `json:"n_tup_newpage_upd,omitempty"` // pg >= v16
 }
 
 type Index struct {
