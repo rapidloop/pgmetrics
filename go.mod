@@ -8,7 +8,7 @@ require (
 	github.com/pborman/getopt v1.1.0
 	github.com/rapidloop/pq v1.1.1
 	golang.org/x/mod v0.12.0
-	golang.org/x/term v0.10.0
+	golang.org/x/term v0.13.0
 )
 
 require (
@@ -22,10 +22,10 @@ require (
 	github.com/pkg/browser v0.0.0-20210115035449-ce105d075bb4 // indirect
 	github.com/xdg-go/stringprep v1.0.0 // indirect
 	github.com/xdg/stringprep v1.0.0 // indirect
-	golang.org/x/crypto v0.9.0 // indirect
-	golang.org/x/net v0.10.0 // indirect
-	golang.org/x/sys v0.10.0 // indirect
-	golang.org/x/text v0.9.0 // indirect
+	golang.org/x/crypto v0.14.0 // indirect
+	golang.org/x/net v0.17.0 // indirect
+	golang.org/x/sys v0.13.0 // indirect
+	golang.org/x/text v0.13.0 // indirect
 )
 
 go 1.19
