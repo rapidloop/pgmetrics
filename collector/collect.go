@@ -31,8 +31,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/rapidloop/pgmetrics"
-	"github.com/rapidloop/pq"
 	"golang.org/x/mod/semver"
 )
 
@@ -234,7 +235,7 @@ func Collect(o CollectConfig, dbnames []string) *pgmetrics.Model {
 
 func getConn(connstr string, o CollectConfig) *sql.DB {
 	// connect
-	db, err := sql.Open("postgres", connstr)
+	db, err := sql.Open("pgx", connstr)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -848,7 +849,7 @@ func (c *collector) getWalReceiverv13() {
 		q = strings.Replace(q, "@sender_host@", `''`, 1)
 	}
 	var r pgmetrics.ReplicationIn
-	var msgSend, msgRecv pq.NullTime
+	var msgSend, msgRecv sql.NullTime
 	if err := c.db.QueryRowContext(ctx, q).Scan(&r.Status, &r.ReceiveStartLSN,
 		&r.ReceiveStartTLI, &r.WrittenLSN, &r.FlushedLSN, &r.ReceivedTLI,
 		&msgSend, &msgRecv, &r.LatestEndLSN, &r.LatestEndTime, &r.SlotName,
@@ -889,7 +890,7 @@ func (c *collector) getWalReceiverv96() {
 			COALESCE(slot_name, ''), conninfo
 		  FROM pg_stat_wal_receiver`
 	var r pgmetrics.ReplicationIn
-	var msgSend, msgRecv pq.NullTime
+	var msgSend, msgRecv sql.NullTime
 	if err := c.db.QueryRowContext(ctx, q).Scan(&r.Status, &r.ReceiveStartLSN, &r.ReceiveStartTLI,
 		&r.ReceivedLSN, &r.ReceivedTLI, &msgSend, &msgRecv,
 		&r.LatestEndLSN, &r.LatestEndTime, &r.SlotName, &r.Conninfo); err != nil {
@@ -1327,7 +1328,7 @@ func (c *collector) getDatabases(fillSize, onlyListed bool, dbList []string) {
 	if onlyListed {
 		if len(dbList) > 0 {
 			onlyClause = "AND (D.datname = any($1))"
-			args = append(args, pq.Array(dbList))
+			args = append(args, &dbList) // was pq.Array(&dbList)
 		} else {
 			onlyClause = "AND (D.datname = current_database())"
 		}
@@ -1753,13 +1754,14 @@ func (c *collector) getRoles() {
 	}
 	defer rows.Close()
 
+	m := pgtype.NewMap()
 	for rows.Next() {
 		var r pgmetrics.Role
 		var validUntil float64
 		if err := rows.Scan(&r.OID, &r.Name, &r.Rolsuper, &r.Rolinherit,
 			&r.Rolcreaterole, &r.Rolcreatedb, &r.Rolcanlogin, &r.Rolreplication,
 			&r.Rolbypassrls, &r.Rolconnlimit, &validUntil,
-			pq.Array(&r.MemberOf)); err != nil {
+			m.SQLScanner(&r.MemberOf)); err != nil { // was pq.Array(&r.MemberOf)
 			log.Fatalf("pg_roles/pg_auth_members query failed: %v", err)
 		}
 		if !math.IsInf(validUntil, 0) {
@@ -2205,18 +2207,15 @@ SELECT pid, pg_blocking_pids(pid) FROM P`
 	}
 	defer rows.Close()
 
+	m := pgtype.NewMap()
 	c.result.BlockingPIDs = make(map[int][]int)
 	for rows.Next() {
 		var pid int
-		var blockers []int64 // lib/pq doesn't support []int :-(
-		if err := rows.Scan(&pid, pq.Array(&blockers)); err != nil {
+		var blockers []int
+		if err := rows.Scan(&pid, m.SQLScanner(&blockers)); err != nil { // was pq.Array(&blockersInt64)
 			log.Fatalf("pg_locks query failed: %v", err)
 		}
-		blockersInt := make([]int, len(blockers))
-		for i := range blockers {
-			blockersInt[i] = int(blockers[i])
-		}
-		c.result.BlockingPIDs[pid] = blockersInt
+		c.result.BlockingPIDs[pid] = blockers
 	}
 	if err := rows.Err(); err != nil {
 		log.Fatalf("pg_locks query failed: %v", err)
@@ -2347,7 +2346,7 @@ func (c *collector) getSubscriptions() {
 
 	for rows.Next() {
 		var s pgmetrics.Subscription
-		var msgSend, msgRecv pq.NullTime
+		var msgSend, msgRecv sql.NullTime
 		if err := rows.Scan(&s.OID, &s.Name, &s.DBName, &s.Enabled, &s.PubCount,
 			&s.TableCount, &s.WorkerCount, &s.ReceivedLSN, &s.LatestEndLSN,
 			&msgSend, &msgRecv, &s.LatestEndTime, &s.ApplyErrorCount, &s.SyncErrorCount); err != nil {
