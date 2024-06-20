@@ -1328,7 +1328,7 @@ func (c *collector) getDatabases(fillSize, onlyListed bool, dbList []string) {
 	if onlyListed {
 		if len(dbList) > 0 {
 			onlyClause = "AND (D.datname = any($1))"
-			args = append(args, &dbList) // was pq.Array(&dbList)
+			args = append(args, dbList)
 		} else {
 			onlyClause = "AND (D.datname = current_database())"
 		}
@@ -1761,7 +1761,7 @@ func (c *collector) getRoles() {
 		if err := rows.Scan(&r.OID, &r.Name, &r.Rolsuper, &r.Rolinherit,
 			&r.Rolcreaterole, &r.Rolcreatedb, &r.Rolcanlogin, &r.Rolreplication,
 			&r.Rolbypassrls, &r.Rolconnlimit, &validUntil,
-			m.SQLScanner(&r.MemberOf)); err != nil { // was pq.Array(&r.MemberOf)
+			m.SQLScanner(&r.MemberOf)); err != nil {
 			log.Fatalf("pg_roles/pg_auth_members query failed: %v", err)
 		}
 		if !math.IsInf(validUntil, 0) {
@@ -2212,7 +2212,7 @@ SELECT pid, pg_blocking_pids(pid) FROM P`
 	for rows.Next() {
 		var pid int
 		var blockers []int
-		if err := rows.Scan(&pid, m.SQLScanner(&blockers)); err != nil { // was pq.Array(&blockersInt64)
+		if err := rows.Scan(&pid, m.SQLScanner(&blockers)); err != nil {
 			log.Fatalf("pg_locks query failed: %v", err)
 		}
 		c.result.BlockingPIDs[pid] = blockers
