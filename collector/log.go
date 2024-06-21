@@ -231,16 +231,17 @@ func (c *collector) readLogLinesCSV(filename string) error {
 		if len(record) >= 26 {
 			qid, _ = strconv.ParseInt(record[25], 10, 64)
 		}
-		c.currLog = logEntry{
-			t:     t,
-			user:  record[1],
-			db:    record[2],
-			qid:   qid,
-			level: record[11],
-			line:  record[13],
+		c.currLog = pgmetrics.LogEntry{
+			At:       t.Unix(),
+			AtFull:   t.In(time.UTC).Format(time.RFC3339Nano),
+			UserName: record[1],
+			DBName:   record[2],
+			QueryID:  qid,
+			Level:    record[11],
+			Line:     record[13],
 		}
 		if d := record[14]; len(d) > 0 {
-			c.currLog.extra = []logEntryExtra{{level: "DETAIL", line: d}}
+			c.currLog.Extra = []pgmetrics.LogEntryExtra{{Level: "DETAIL", Line: d}}
 		}
 		c.processLogEntry()
 	}
@@ -248,28 +249,13 @@ func (c *collector) readLogLinesCSV(filename string) error {
 
 var severities = []string{"DEBUG", "LOG", "INFO", "NOTICE", "WARNING", "ERROR", "FATAL", "PANIC"}
 
-type logEntry struct {
-	t     time.Time
-	user  string
-	db    string
-	qid   int64
-	level string
-	line  string
-	extra []logEntryExtra
-}
-
-func (l *logEntry) get(level string) string {
-	for _, e := range l.extra {
-		if e.level == level {
-			return e.line
+func getExtra(l *pgmetrics.LogEntry, level string) string {
+	for _, e := range l.Extra {
+		if e.Level == level {
+			return e.Line
 		}
 	}
 	return ""
-}
-
-type logEntryExtra struct {
-	level string
-	line  string
 }
 
 func (c *collector) processLogLine(first bool, t time.Time, user, db string,
@@ -290,45 +276,53 @@ func (c *collector) processLogLine(first bool, t time.Time, user, db string,
 			c.processLogEntry()
 		}
 		// start new entry
-		c.currLog = logEntry{
-			t:     t,
-			user:  user,
-			db:    db,
-			qid:   qid,
-			level: level,
-			line:  line,
-			extra: nil,
+		c.currLog = pgmetrics.LogEntry{
+			At:       t.Unix(),
+			AtFull:   t.In(time.UTC).Format(time.RFC3339Nano),
+			UserName: user,
+			DBName:   db,
+			QueryID:  qid,
+			Level:    level,
+			Line:     line,
 		}
 	} else {
 		// add to extra
-		c.currLog.extra = append(c.currLog.extra, logEntryExtra{level: level, line: line})
+		c.currLog.Extra = append(c.currLog.Extra, pgmetrics.LogEntryExtra{
+			Level: level,
+			Line:  line,
+		})
 	}
 }
 
 func (c *collector) processLogEntry() {
 	//log.Printf("debug: got log entry %+v", c.currLog)
-	if sm := rxAEStart.FindStringSubmatch(c.currLog.line); sm != nil {
+	if sm := rxAEStart.FindStringSubmatch(c.currLog.Line); sm != nil {
 		c.processAE(sm)
-	} else if sm := rxAVStart.FindStringSubmatch(c.currLog.line); sm != nil {
+	} else if sm := rxAVStart.FindStringSubmatch(c.currLog.Line); sm != nil {
 		c.processAV(sm)
-	} else if c.currLog.line == "deadlock detected" {
+	} else if c.currLog.Line == "deadlock detected" {
 		c.processDeadlock()
 	}
+
+	// add it to raw log lines
+	e2 := c.currLog
+	e2.Extra = append([]pgmetrics.LogEntryExtra{}, c.currLog.Extra...)
+	c.result.LogEntries = append(c.result.LogEntries, e2)
 }
 
 func (c *collector) processAE(sm []string) {
 	e := c.currLog
 	p := pgmetrics.Plan{
-		Database: e.db,
-		UserName: e.user,
+		Database: e.DBName,
+		UserName: e.UserName,
 		Format:   "text",
-		At:       e.t.Unix(),
-		QueryID:  e.qid,
+		At:       e.At,
+		QueryID:  e.QueryID,
 	}
 	switch {
 	case len(sm[1]) > 0:
 		p.Format = "json"
-		if parts := strings.SplitN(e.line, "\n", 2); len(parts) == 2 { // has to be 2
+		if parts := strings.SplitN(e.Line, "\n", 2); len(parts) == 2 { // has to be 2
 			var obj map[string]interface{}
 			if err := json.Unmarshal([]byte(parts[1]), &obj); err == nil {
 				// extract the query and remove it out
@@ -350,7 +344,7 @@ func (c *collector) processAE(sm []string) {
 	case len(sm[4]) > 0:
 		p.Format = "text"
 		var sp *string = nil
-		for _, l := range strings.Split(e.line, "\n") {
+		for _, l := range strings.Split(e.Line, "\n") {
 			if sm := rxAESwitch1.FindStringSubmatch(l); sm != nil {
 				p.Query = sm[1]
 				sp = &p.Query
@@ -372,13 +366,13 @@ func (c *collector) processAV(sm []string) {
 	if len(sm) != 4 {
 		return
 	}
-	sm2 := rxAVElapsed.FindStringSubmatch(e.line)
+	sm2 := rxAVElapsed.FindStringSubmatch(e.Line)
 	if len(sm2) != 2 {
 		return
 	}
 	elapsed, _ := strconv.ParseFloat(sm2[1], 64)
 	c.result.AutoVacuums = append(c.result.AutoVacuums, pgmetrics.AutoVacuum{
-		At:      e.t.Unix(),
+		At:      e.At,
 		Table:   sm[3],
 		Elapsed: elapsed,
 	})
@@ -386,8 +380,11 @@ func (c *collector) processAV(sm []string) {
 
 func (c *collector) processDeadlock() {
 	e := c.currLog
-	text := strings.ReplaceAll(e.get("DETAIL"), "\t", "") + "\n"
-	c.result.Deadlocks = append(c.result.Deadlocks, pgmetrics.Deadlock{At: e.t.Unix(), Detail: text})
+	text := strings.ReplaceAll(getExtra(&e, "DETAIL"), "\t", "") + "\n"
+	c.result.Deadlocks = append(c.result.Deadlocks, pgmetrics.Deadlock{
+		At:     e.At,
+		Detail: text,
+	})
 }
 
 //------------------------------------------------------------------------------

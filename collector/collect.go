@@ -322,7 +322,7 @@ type collector struct {
 	curlogfile   string
 	csvlog       bool
 	logSpan      uint
-	currLog      logEntry
+	currLog      pgmetrics.LogEntry
 	rxPrefix     *regexp.Regexp
 }
 

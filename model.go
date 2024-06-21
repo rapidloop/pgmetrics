@@ -19,6 +19,7 @@ package pgmetrics
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
 //
+//	1.17 - Raw log entries
 //	1.16 - Postgres 16 support
 //	1.15 - Pgpool ReplicationDelaySeconds
 //	1.14 - PgBouncer 1.19, Pgpool support
@@ -37,7 +38,7 @@ package pgmetrics
 //	1.2 - more table and index attributes
 //	1.1 - added NotificationQueueUsage and Statements
 //	1.0 - initial release
-const ModelSchemaVersion = "1.16"
+const ModelSchemaVersion = "1.17"
 
 // Model contains the entire information collected by a single run of
 // pgmetrics. It can be converted to and from json without loss of
@@ -180,6 +181,11 @@ type Model struct {
 
 	// metrics from Pgpool
 	Pgpool *Pgpool `json:"pgpool,omitempty"`
+
+	// following fields are present only in schema 1.17 and later
+
+	// raw log entries during specified time span
+	LogEntries []LogEntry `json:"log_entries,omitempty"`
 }
 
 // DatabaseByOID iterates over the databases in the model and returns the reference
@@ -1045,4 +1051,26 @@ type PgpoolQueryCache struct {
 	UsedCacheEntriesSize     int64   `json:"used_cache_entries_size"`
 	FreeCacheEntriesSize     int64   `json:"free_cache_entries_size"`
 	FragmentCacheEntriesSize int64   `json:"fragment_cache_entries_size"`
+}
+
+// LogEntry contains one single log entry from the log file. What fields are
+// filled in depends on the log_line_prefix setting. Timestamp will always be
+// present.
+// Added in schema 1.17.
+type LogEntry struct {
+	At       int64           `json:"at"`
+	AtFull   string          `json:"atfull"` // time, in RFC3339 format, tz will be UTC
+	UserName string          `json:"user,omitempty"`
+	DBName   string          `json:"db_name,omitempty"`
+	QueryID  int64           `json:"queryid,omitempty"`
+	Level    string          `json:"level,omitempty"`
+	Line     string          `json:"line,omitempty"`
+	Extra    []LogEntryExtra `json:"extra,omitempty"`
+}
+
+// LogEntryExtra contains lines that appear after the first line in a
+// multi-line log entry.
+type LogEntryExtra struct {
+	Level string `json:"level,omitempty"`
+	Line  string `json:"line,omitempty"`
 }
