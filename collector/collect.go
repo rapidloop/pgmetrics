@@ -1945,18 +1945,207 @@ func (c *collector) getStatements(currdb string) {
 		return
 	}
 
-	// New columns in pss were added in pg v13 that shipped with pss v1.8.
-	// Support the case when we're connected to pg v13 with older versions
-	// of pss.
-
-	if semver.Compare(version, "v1.8") >= 0 { // is pss version >= v1.8?
-		c.getStatementsv13(currdb) // then also query the new columns
+	// Collect based on pss version, not pg version. This allows for cases when
+	// postgres is upgraded, but not the extension.
+	if semver.Compare(version, "v1.11") >= 0 { // pg v17
+		c.getStatementsv111(currdb)
+	} else if semver.Compare(version, "v1.10") >= 0 { // pg v15, pg v16
+		c.getStatementsv110(currdb)
+	} else if semver.Compare(version, "v1.9") >= 0 { // pg v14
+		c.getStatementsv19(currdb)
+	} else if semver.Compare(version, "v1.8") >= 0 { // pg v13
+		c.getStatementsv18(currdb)
 	} else {
-		c.getStatementsPrev13(currdb)
+		c.getStatementsPrev18(currdb)
 	}
 }
 
-func (c *collector) getStatementsv13(currdb string) {
+func (c *collector) getStatementsv111(currdb string) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT userid, dbid, queryid, LEFT(COALESCE(query, ''), $1), calls,
+			total_exec_time, min_exec_time, max_exec_time, stddev_exec_time,
+			rows, shared_blks_hit, shared_blks_read, shared_blks_dirtied,
+			shared_blks_written, local_blks_hit, local_blks_read,
+			local_blks_dirtied, local_blks_written, temp_blks_read,
+			temp_blks_written, shared_blk_read_time, shared_blk_write_time,
+			plans, total_plan_time, min_plan_time, max_plan_time,
+			stddev_plan_time, wal_records, wal_fpi, wal_bytes::bigint,
+			toplevel, temp_blk_read_time, temp_blk_write_time,
+			jit_functions, jit_generation_time, jit_inlining_count,
+			jit_inlining_time, jit_optimization_count, jit_optimization_time,
+			jit_emission_count, jit_emission_time, local_blk_read_time,
+			local_blk_write_time, jit_deform_count, jit_deform_time,
+			stats_since, minmax_stats_since
+		  FROM pg_stat_statements
+		  ORDER BY total_exec_time DESC
+		  LIMIT $2`
+	rows, err := c.db.QueryContext(ctx, q, c.sqlLength, c.stmtsLimit)
+	if err != nil {
+		log.Printf("warning: pg_stat_statements query failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	c.result.Statements = make([]pgmetrics.Statement, 0, c.stmtsLimit)
+	for rows.Next() {
+		var s pgmetrics.Statement
+		var queryID sql.NullInt64
+		var statsSince, minMaxStatsSince time.Time
+		if err := rows.Scan(&s.UserOID, &s.DBOID, &queryID, &s.Query,
+			&s.Calls, &s.TotalTime, &s.MinTime, &s.MaxTime, &s.StddevTime,
+			&s.Rows, &s.SharedBlksHit, &s.SharedBlksRead, &s.SharedBlksDirtied,
+			&s.SharedBlksWritten, &s.LocalBlksHit, &s.LocalBlksRead,
+			&s.LocalBlksDirtied, &s.LocalBlksWritten, &s.TempBlksRead,
+			&s.TempBlksWritten, &s.BlkReadTime, &s.BlkWriteTime, &s.Plans,
+			&s.TotalPlanTime, &s.MinPlanTime, &s.MaxPlanTime, &s.StddevPlanTime,
+			&s.WALRecords, &s.WALFPI, &s.WALBytes, &s.TopLevel,
+			&s.TempBlkReadTime, &s.TempBlkWriteTime, &s.JITFuntions,
+			&s.JITGenerationTime, &s.JITInliningCount, &s.JITInliningTime,
+			&s.JITOptimizationCount, &s.JITOptimizationTime, &s.JITEmissionCount,
+			&s.JITEmissionTime, &s.LocalBlkReadTime, &s.LocalBlkWriteTime,
+			&s.JITDeformCount, &s.JITDeformTime, &statsSince, &minMaxStatsSince,
+		); err != nil {
+			log.Fatalf("pg_stat_statements scan failed: %v", err)
+		}
+		// UserName
+		if r := c.result.RoleByOID(s.UserOID); r != nil {
+			s.UserName = r.Name
+		}
+		// DBName
+		if d := c.result.DatabaseByOID(s.DBOID); d != nil {
+			s.DBName = d.Name
+		}
+		// Query ID, set to 0 if null
+		s.QueryID = queryID.Int64
+		// StatsSince
+		s.StatsSince = statsSince.Unix()
+		// MinMaxStatsSince
+		s.MinMaxStatsSince = minMaxStatsSince.Unix()
+		c.result.Statements = append(c.result.Statements, s)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_stat_statements failed: %v", err)
+	}
+}
+
+func (c *collector) getStatementsv110(currdb string) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT userid, dbid, queryid, LEFT(COALESCE(query, ''), $1), calls,
+			total_exec_time, min_exec_time, max_exec_time, stddev_exec_time,
+			rows, shared_blks_hit, shared_blks_read, shared_blks_dirtied,
+			shared_blks_written, local_blks_hit, local_blks_read,
+			local_blks_dirtied, local_blks_written, temp_blks_read,
+			temp_blks_written, blk_read_time, blk_write_time,
+			plans, total_plan_time, min_plan_time, max_plan_time,
+			stddev_plan_time, wal_records, wal_fpi, wal_bytes::bigint,
+			toplevel, temp_blk_read_time, temp_blk_write_time,
+			jit_functions, jit_generation_time, jit_inlining_count,
+			jit_inlining_time, jit_optimization_count, jit_optimization_time,
+			jit_emission_count, jit_emission_time
+		  FROM pg_stat_statements
+		  ORDER BY total_exec_time DESC
+		  LIMIT $2`
+	rows, err := c.db.QueryContext(ctx, q, c.sqlLength, c.stmtsLimit)
+	if err != nil {
+		log.Printf("warning: pg_stat_statements query failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	c.result.Statements = make([]pgmetrics.Statement, 0, c.stmtsLimit)
+	for rows.Next() {
+		var s pgmetrics.Statement
+		var queryID sql.NullInt64
+		if err := rows.Scan(&s.UserOID, &s.DBOID, &queryID, &s.Query,
+			&s.Calls, &s.TotalTime, &s.MinTime, &s.MaxTime, &s.StddevTime,
+			&s.Rows, &s.SharedBlksHit, &s.SharedBlksRead, &s.SharedBlksDirtied,
+			&s.SharedBlksWritten, &s.LocalBlksHit, &s.LocalBlksRead,
+			&s.LocalBlksDirtied, &s.LocalBlksWritten, &s.TempBlksRead,
+			&s.TempBlksWritten, &s.BlkReadTime, &s.BlkWriteTime, &s.Plans,
+			&s.TotalPlanTime, &s.MinPlanTime, &s.MaxPlanTime, &s.StddevPlanTime,
+			&s.WALRecords, &s.WALFPI, &s.WALBytes, &s.TopLevel,
+			&s.TempBlkReadTime, &s.TempBlkWriteTime, &s.JITFuntions,
+			&s.JITGenerationTime, &s.JITInliningCount, &s.JITInliningTime,
+			&s.JITOptimizationCount, &s.JITOptimizationTime, &s.JITEmissionCount,
+			&s.JITEmissionTime); err != nil {
+			log.Fatalf("pg_stat_statements scan failed: %v", err)
+		}
+		// UserName
+		if r := c.result.RoleByOID(s.UserOID); r != nil {
+			s.UserName = r.Name
+		}
+		// DBName
+		if d := c.result.DatabaseByOID(s.DBOID); d != nil {
+			s.DBName = d.Name
+		}
+		// Query ID, set to 0 if null
+		s.QueryID = queryID.Int64
+		c.result.Statements = append(c.result.Statements, s)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_stat_statements failed: %v", err)
+	}
+}
+
+func (c *collector) getStatementsv19(currdb string) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT userid, dbid, queryid, LEFT(COALESCE(query, ''), $1), calls,
+			total_exec_time, min_exec_time, max_exec_time, stddev_exec_time,
+			rows, shared_blks_hit, shared_blks_read, shared_blks_dirtied,
+			shared_blks_written, local_blks_hit, local_blks_read,
+			local_blks_dirtied, local_blks_written, temp_blks_read,
+			temp_blks_written, blk_read_time, blk_write_time,
+			plans, total_plan_time, min_plan_time, max_plan_time,
+			stddev_plan_time, wal_records, wal_fpi, wal_bytes::bigint,
+			toplevel
+		  FROM pg_stat_statements
+		  ORDER BY total_exec_time DESC
+		  LIMIT $2`
+	rows, err := c.db.QueryContext(ctx, q, c.sqlLength, c.stmtsLimit)
+	if err != nil {
+		log.Printf("warning: pg_stat_statements query failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	c.result.Statements = make([]pgmetrics.Statement, 0, c.stmtsLimit)
+	for rows.Next() {
+		var s pgmetrics.Statement
+		var queryID sql.NullInt64
+		if err := rows.Scan(&s.UserOID, &s.DBOID, &queryID, &s.Query,
+			&s.Calls, &s.TotalTime, &s.MinTime, &s.MaxTime, &s.StddevTime,
+			&s.Rows, &s.SharedBlksHit, &s.SharedBlksRead, &s.SharedBlksDirtied,
+			&s.SharedBlksWritten, &s.LocalBlksHit, &s.LocalBlksRead,
+			&s.LocalBlksDirtied, &s.LocalBlksWritten, &s.TempBlksRead,
+			&s.TempBlksWritten, &s.BlkReadTime, &s.BlkWriteTime, &s.Plans,
+			&s.TotalPlanTime, &s.MinPlanTime, &s.MaxPlanTime, &s.StddevPlanTime,
+			&s.WALRecords, &s.WALFPI, &s.WALBytes, &s.TopLevel); err != nil {
+			log.Fatalf("pg_stat_statements scan failed: %v", err)
+		}
+		// UserName
+		if r := c.result.RoleByOID(s.UserOID); r != nil {
+			s.UserName = r.Name
+		}
+		// DBName
+		if d := c.result.DatabaseByOID(s.DBOID); d != nil {
+			s.DBName = d.Name
+		}
+		// Query ID, set to 0 if null
+		s.QueryID = queryID.Int64
+		c.result.Statements = append(c.result.Statements, s)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_stat_statements failed: %v", err)
+	}
+}
+
+func (c *collector) getStatementsv18(currdb string) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -2009,7 +2198,7 @@ func (c *collector) getStatementsv13(currdb string) {
 	}
 }
 
-func (c *collector) getStatementsPrev13(currdb string) {
+func (c *collector) getStatementsPrev18(currdb string) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
