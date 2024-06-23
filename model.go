@@ -19,7 +19,7 @@ package pgmetrics
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
 //
-//	1.17 - Raw log entries
+//	1.17 - Raw log entries, Postgres 17 support
 //	1.16 - Postgres 16 support
 //	1.15 - Pgpool ReplicationDelaySeconds
 //	1.14 - PgBouncer 1.19, Pgpool support
@@ -482,6 +482,11 @@ type UserFunction struct {
 	SelfTime   float64 `json:"self_time"`
 }
 
+// VacuumProgressBackend holds the contents of a row from pg_stat_progress_vacuum.
+// In Postgres 17, max_dead_tuples was renamed max_dead_tuple_bytes and
+// num_dead_tuples was renamed dead_tuple_bytes. The old names are still used
+// in this struct, but will be filled in with values from the new columns in
+// pg17.
 type VacuumProgressBackend struct {
 	DBName           string `json:"db_name"`
 	TableOID         int    `json:"table_oid"`
@@ -491,10 +496,14 @@ type VacuumProgressBackend struct {
 	HeapBlksScanned  int64  `json:"heap_blks_scanned"`
 	HeapBlksVacuumed int64  `json:"heap_blks_vacuumed"`
 	IndexVacuumCount int64  `json:"index_vacuum_count"`
-	MaxDeadTuples    int64  `json:"max_dead_tuples"`
-	NumDeadTuples    int64  `json:"num_dead_tuples"`
+	MaxDeadTuples    int64  `json:"max_dead_tuples"` // == max_dead_tuple_bytes in pg >= v17
+	NumDeadTuples    int64  `json:"num_dead_tuples"` // == dead_tuple_bytes in pg >= v17
 	// following fields present only in schema 1.12 and later
 	PID int `json:"pid,omitempty"`
+	// following fields present only in schema 1.17 and later
+	NumDeadItemIDs   int64 `json:"num_dead_item_ids,omitempty"` // pg >= v17
+	IndexesTotal     int64 `json:"indexes_total,omitempty"`     // pg >= v17
+	IndexesProcessed int64 `json:"indexes_processed,omitempty"` // pg >= v17
 }
 
 type Extension struct {
@@ -523,16 +532,19 @@ type WALArchiving struct {
 	StatsReset       int64  `json:"stats_reset"`
 }
 
+// BGWriter holds the contents of a row from pg_stat_bgwriter. In Postgres 17,
+// some columns were removed, and some where moved to the new
+// pg_stat_checkpointer view.
 type BGWriter struct {
-	CheckpointsTimed     int64   `json:"checkpoints_timed"`
-	CheckpointsRequested int64   `json:"checkpoints_req"`
-	CheckpointWriteTime  float64 `json:"checkpoint_write_time"`
-	CheckpointSyncTime   float64 `json:"checkpoint_sync_time"`
-	BuffersCheckpoint    int64   `json:"buffers_checkpoint"`
+	CheckpointsTimed     int64   `json:"checkpoints_timed,omitempty"`     // <=pg16
+	CheckpointsRequested int64   `json:"checkpoints_req,omitempty"`       // <=pg16
+	CheckpointWriteTime  float64 `json:"checkpoint_write_time,omitempty"` // <=pg16
+	CheckpointSyncTime   float64 `json:"checkpoint_sync_time,omitempty"`  // <=pg16
+	BuffersCheckpoint    int64   `json:"buffers_checkpoint,omitempty"`    // <=pg16
 	BuffersClean         int64   `json:"buffers_clean"`
 	MaxWrittenClean      int64   `json:"maxwritten_clean"`
-	BuffersBackend       int64   `json:"buffers_backend"`
-	BuffersBackendFsync  int64   `json:"buffers_backend_fsync"`
+	BuffersBackend       int64   `json:"buffers_backend,omitempty"`       // <=pg16
+	BuffersBackendFsync  int64   `json:"buffers_backend_fsync,omitempty"` // <=pg16
 	BuffersAlloc         int64   `json:"buffers_alloc"`
 	StatsReset           int64   `json:"stats_reset"`
 }

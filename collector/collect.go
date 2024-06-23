@@ -49,6 +49,7 @@ const (
 	pgv14 = 14_00_00
 	pgv15 = 15_00_00
 	pgv16 = 16_00_00
+	pgv17 = 17_00_00
 )
 
 // See https://www.postgresql.org/docs/current/static/libpq-connect.html#LIBPQ-CONNSTRING
@@ -440,7 +441,11 @@ func (c *collector) collectCluster(o CollectConfig) {
 		c.getWALArchiver()
 	}
 
-	c.getBGWriter()
+	if c.version >= pgv17 {
+		c.getBGWriterv17()
+	} else {
+		c.getBGWriter()
+	}
 
 	if c.version >= pgv10 {
 		c.getReplicationv10()
@@ -460,8 +465,10 @@ func (c *collector) collectCluster(o CollectConfig) {
 		c.getAdminFuncv9()
 	}
 
-	if c.version >= pgv96 {
-		c.getVacuumProgress()
+	if c.version >= pgv17 {
+		c.getVacuumProgressv17()
+	} else if c.version >= pgv96 {
+		c.getVacuumProgressv96()
 	}
 
 	c.getDatabases(!o.NoSizes, o.OnlyListedDBs, c.dbnames)
@@ -711,6 +718,22 @@ func (c *collector) getLocal() {
 		c.local = false // don't fail on errors
 	}
 	c.result.Metadata.Local = c.local
+}
+
+func (c *collector) getBGWriterv17() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT buffers_clean, maxwritten_clean, buffers_alloc, stats_reset
+		  FROM pg_stat_bgwriter`
+	bg := &c.result.BGWriter
+	var statsReset time.Time
+	if err := c.db.QueryRowContext(ctx, q).Scan(&bg.BuffersClean,
+		&bg.MaxWrittenClean, &bg.BuffersAlloc, &statsReset); err != nil {
+		log.Fatalf("pg_stat_bgwriter query failed: %v", err)
+		return
+	}
+	bg.StatsReset = statsReset.Unix()
 }
 
 func (c *collector) getBGWriter() {
@@ -1672,7 +1695,43 @@ func (c *collector) getUserFunctions() {
 	}
 }
 
-func (c *collector) getVacuumProgress() {
+func (c *collector) getVacuumProgressv17() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT pid, datname, COALESCE(relid, 0), COALESCE(phase, ''),
+			COALESCE(heap_blks_total, 0), COALESCE(heap_blks_scanned, 0),
+			COALESCE(heap_blks_vacuumed, 0), COALESCE(index_vacuum_count, 0),
+			COALESCE(max_dead_tuple_bytes, 0), COALESCE(dead_tuple_bytes, 0),
+			COALESCE(num_dead_item_ids, 0), COALESCE(indexes_total, 0),
+			COALESCE(indexes_processed, 0)
+		  FROM pg_stat_progress_vacuum
+		  ORDER BY pid ASC`
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		log.Fatalf("pg_stat_progress_vacuum query failed: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var p pgmetrics.VacuumProgressBackend
+		if err := rows.Scan(&p.PID, &p.DBName, &p.TableOID, &p.Phase, &p.HeapBlksTotal,
+			&p.HeapBlksScanned, &p.HeapBlksVacuumed, &p.IndexVacuumCount,
+			&p.MaxDeadTuples, &p.NumDeadTuples, &p.NumDeadItemIDs,
+			&p.IndexesTotal, &p.IndexesProcessed); err != nil {
+			log.Fatalf("pg_stat_progress_vacuum query failed: %v", err)
+		}
+		if t := c.result.TableByOID(p.TableOID); t != nil {
+			p.TableName = t.Name
+		}
+		c.result.VacuumProgress = append(c.result.VacuumProgress, p)
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_stat_progress_vacuum query failed: %v", err)
+	}
+}
+
+func (c *collector) getVacuumProgressv96() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
