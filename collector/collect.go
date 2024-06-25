@@ -31,8 +31,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/rapidloop/pgmetrics"
 	"golang.org/x/mod/semver"
 )
@@ -235,18 +236,25 @@ func Collect(o CollectConfig, dbnames []string) *pgmetrics.Model {
 }
 
 func getConn(connstr string, o CollectConfig) *sql.DB {
-	// connect
-	db, err := sql.Open("pgx", connstr)
+	// open database/sql connection
+	cfg, err := pgx.ParseConfig(connstr)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("failed to parse connection string: %v", err)
 	}
+	isPgbouncer := cfg.Database == "pgbouncer"
+	if isPgbouncer {
+		cfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+	}
+	db := stdlib.OpenDB(*cfg)
 
-	// ping
-	t := time.Duration(o.TimeoutSec) * time.Second
-	ctx, cancel := context.WithTimeout(context.Background(), t)
-	defer cancel()
-	if err := db.PingContext(ctx); err != nil {
-		log.Fatal(err)
+	// ping (does not work with pgx+pgbouncer)
+	if !isPgbouncer {
+		t := time.Duration(o.TimeoutSec) * time.Second
+		ctx, cancel := context.WithTimeout(context.Background(), t)
+		defer cancel()
+		if err := db.PingContext(ctx); err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	// set role, if specified
@@ -3112,6 +3120,10 @@ func (c *collector) getPBServers() {
  *            link, remote_pid, tls, application_name
  * 1.19: same as 1.18
  * 1.20: same as 1.19
+ * 1.21: (19) type, user, database, state, addr, port, local_addr, local_port,
+ *            connect_time, request_time, wait, wait_us, close_needed, ptr,
+ *            link, remote_pid, tls, application_name, prepared_statements
+ * 1.22: same as 1.21
  */
 
 func (c *collector) getPBClients() {
@@ -3131,7 +3143,7 @@ func (c *collector) getPBClients() {
 
 	var totalWait float64
 	for rows.Next() {
-		var s [15]sql.NullString
+		var s [16]sql.NullString
 		var state string
 		var wait, waitUs float64
 		if ncols == 16 {
@@ -3145,6 +3157,10 @@ func (c *collector) getPBClients() {
 			err = rows.Scan(&s[0], &s[1], &s[2], &state, &s[3], &s[4], &s[5],
 				&s[6], &s[7], &s[8], &wait, &waitUs, &s[9], &s[10], &s[11], &s[12],
 				&s[13], &s[14])
+		} else if ncols == 19 {
+			err = rows.Scan(&s[0], &s[1], &s[2], &state, &s[3], &s[4], &s[5],
+				&s[6], &s[7], &s[8], &wait, &waitUs, &s[9], &s[10], &s[11], &s[12],
+				&s[13], &s[14], &s[15])
 		} else {
 			log.Fatalf("pgbouncer: unsupported number of columns %d in 'SHOW CLIENTS'", ncols)
 		}
