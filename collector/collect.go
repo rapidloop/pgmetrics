@@ -511,6 +511,10 @@ func (c *collector) collectCluster(o CollectConfig) {
 		c.getProgressCopy()
 	}
 
+	if c.version >= pgv17 {
+		c.getCheckpointer()
+	}
+
 	if !arrayHas(o.Omit, "log") && c.local {
 		c.getLogInfo()
 	}
@@ -2928,6 +2932,26 @@ func (c *collector) getProgressCreateIndex() {
 	}
 
 	c.result.CreateIndexProgress = out
+}
+
+func (c *collector) getCheckpointer() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	q := `SELECT num_timed, num_requested, restartpoints_timed,
+				restartpoints_req, restartpoints_done, write_time, sync_time,
+				buffers_written, COALESCE(EXTRACT(EPOCH FROM stats_reset)::bigint, 0)
+		    FROM pg_stat_checkpointer`
+
+	var ckp pgmetrics.Checkpointer
+	err := c.db.QueryRowContext(ctx, q).Scan(&ckp.NumTimed, &ckp.NumRequested,
+		&ckp.RestartpointsTimed, &ckp.RestartpointsRequested, &ckp.RestartpointsDone,
+		&ckp.WriteTime, &ckp.SyncTime, &ckp.BuffersWritten, &ckp.StatsReset)
+	if err != nil {
+		log.Fatalf("pg_stat_checkpointer query failed: %v", err)
+	}
+
+	c.result.Checkpointer = &ckp
 }
 
 //------------------------------------------------------------------------------

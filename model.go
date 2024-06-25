@@ -186,6 +186,9 @@ type Model struct {
 
 	// raw log entries during specified time span
 	LogEntries []LogEntry `json:"log_entries,omitempty"`
+
+	// contents of pg_stat_checkpointer, pg >= v17
+	Checkpointer *Checkpointer `json:"checkpointer,omitempty"`
 }
 
 // DatabaseByOID iterates over the databases in the model and returns the reference
@@ -1103,4 +1106,18 @@ type LogEntry struct {
 type LogEntryExtra struct {
 	Level string `json:"level,omitempty"`
 	Line  string `json:"line,omitempty"`
+}
+
+// Checkpointer contains the data from the only row of pg_stat_checkpointer.
+// Present only in pg >= v17. Added in schema 1.17.
+type Checkpointer struct {
+	NumTimed               int64   `json:"num_timed"`
+	NumRequested           int64   `json:"num_requested"`
+	RestartpointsTimed     int64   `json:"restartpoints_timed"`
+	RestartpointsRequested int64   `json:"restartpoints_req"`
+	RestartpointsDone      int64   `json:"restartpoints_done"`
+	WriteTime              float64 `json:"write_time"`
+	SyncTime               float64 `json:"sync_time"`
+	BuffersWritten         int64   `json:"buffers_written"`
+	StatsReset             int64   `json:"stats_reset"`
 }
