@@ -33,7 +33,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/rapidloop/pgmetrics"
 	"golang.org/x/mod/semver"
 )
@@ -180,26 +180,56 @@ func getRegexp(r string) (rx *regexp.Regexp) {
 func Collect(o CollectConfig, dbnames []string) *pgmetrics.Model {
 	// form connection string
 	var connstr string
-	if len(o.Host) > 0 {
-		connstr += makeKV("host", o.Host)
+	mode := "postgres"
+	// Support supplying the connection string itself as an argument. If this
+	// is specified, it takes precedence over other command-line options.
+	if len(dbnames) == 1 {
+		// see if this is actually a connection string
+		cfg, err := pgx.ParseConfig(dbnames[0])
+		if err == nil {
+			// yes it is, use it
+			connstr = cfg.ConnString() + " "
+			if cfg.Database == "pgbouncer" {
+				mode = "pgbouncer"
+			}
+			dbnames = dbnames[1:]
+		}
 	}
-	connstr += makeKV("port", strconv.Itoa(int(o.Port)))
-	if len(o.User) > 0 {
-		connstr += makeKV("user", o.User)
+	if len(connstr) == 0 {
+		// connection string was not specified, use command-line options
+		if len(o.Host) > 0 {
+			connstr += makeKV("host", o.Host)
+		}
+		connstr += makeKV("port", strconv.Itoa(int(o.Port)))
+		if len(o.User) > 0 {
+			connstr += makeKV("user", o.User)
+		}
+		if len(o.Password) > 0 {
+			connstr += makeKV("password", o.Password)
+		}
+		// pgmetrics defaults to sslmode=disable if unset. Explicitly set
+		// the environment variable PGSSLMODE before invoking pgmetrics if you want
+		// a different behavior.
+		if os.Getenv("PGSSLMODE") == "" {
+			connstr += makeKV("sslmode", "disable")
+		}
+		connstr += makeKV("application_name", "pgmetrics")
+		if len(dbnames) == 1 && dbnames[0] == "pgbouncer" {
+			mode = "pgbouncer"
+		}
 	}
-	if len(o.Password) > 0 {
-		connstr += makeKV("password", o.Password)
+	if o.Pgpool {
+		mode = "pgpool"
 	}
-	if os.Getenv("PGSSLMODE") == "" {
-		connstr += makeKV("sslmode", "disable")
-	}
-	connstr += makeKV("application_name", "pgmetrics")
 
 	// set timeouts (but not for pgbouncer, it does not like them)
-	if !(len(dbnames) == 1 && dbnames[0] == "pgbouncer") {
+	if mode != "pgbouncer" {
 		connstr += makeKV("lock_timeout", strconv.Itoa(int(o.LockTimeoutMillisec)))
 		connstr += makeKV("statement_timeout", strconv.Itoa(int(o.TimeoutSec)*1000))
 	}
+
+	// use simple protocol for maximum compatibility (pgx-specific keyword)
+	connstr += makeKV("default_query_exec_mode", "simple_protocol")
 
 	// if "all DBs" was specified, collect the names of databases first
 	if o.AllDBs {
@@ -209,6 +239,7 @@ func Collect(o CollectConfig, dbnames []string) *pgmetrics.Model {
 	// collect from 1 or more DBs
 	c := &collector{
 		dbnames: dbnames,
+		mode:    mode,
 	}
 	if len(dbnames) == 0 {
 		collectFromDB(connstr, c, o)
@@ -236,41 +267,27 @@ func Collect(o CollectConfig, dbnames []string) *pgmetrics.Model {
 }
 
 func getConn(connstr string, o CollectConfig) *sql.DB {
-	// open database/sql connection
-	cfg, err := pgx.ParseConfig(connstr)
+	db, err := sql.Open("pgx", connstr)
 	if err != nil {
-		log.Fatalf("failed to parse connection string: %v", err)
+		log.Fatalf("failed to open connection: %v", err)
 	}
-	// use simple protocol for maximum compatibility
-	cfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
-	db := stdlib.OpenDB(*cfg)
 
-	// ping (does not work with pgx+pgbouncer)
-	if cfg.Database != "pgbouncer" {
-		t := time.Duration(o.TimeoutSec) * time.Second
-		ctx, cancel := context.WithTimeout(context.Background(), t)
-		defer cancel()
-		if err := db.PingContext(ctx); err != nil {
-			log.Fatal(err)
-		}
-	}
+	// ensure only 1 conn
+	db.SetMaxIdleConns(1)
+	db.SetMaxOpenConns(1)
 
 	// set role, if specified
 	if len(o.Role) > 0 {
 		if !isValidIdent(o.Role) {
 			log.Fatalf("bad format for role %q", o.Role)
 		}
-		t2 := time.Duration(o.TimeoutSec) * time.Second
-		ctx2, cancel2 := context.WithTimeout(context.Background(), t2)
-		defer cancel2()
-		if _, err := db.ExecContext(ctx2, "SET ROLE "+o.Role); err != nil {
+		t := time.Duration(o.TimeoutSec) * time.Second
+		ctx, cancel := context.WithTimeout(context.Background(), t)
+		defer cancel()
+		if _, err := db.ExecContext(ctx, "SET ROLE "+o.Role); err != nil {
 			log.Fatalf("failed to set role %q: %v", o.Role, err)
 		}
 	}
-
-	// ensure only 1 conn
-	db.SetMaxIdleConns(1)
-	db.SetMaxOpenConns(1)
 
 	return db
 }
@@ -331,6 +348,7 @@ type collector struct {
 	logSpan      uint
 	currLog      pgmetrics.LogEntry
 	rxPrefix     *regexp.Regexp
+	mode         string // "postgres", "pgbouncer" or "pgpool"
 }
 
 func (c *collector) collect(db *sql.DB, o CollectConfig) {
@@ -363,20 +381,18 @@ func (c *collector) collectFirst(db *sql.DB, o CollectConfig) {
 	c.result.Metadata.Version = pgmetrics.ModelSchemaVersion
 
 	// collect either postgres, pgbouncer or pgpool metrics
-	if o.Pgpool {
-		// pgpool mode:
-		c.result.Metadata.Mode = "pgpool"
+	c.result.Metadata.Mode = c.mode
+	switch c.mode {
+	case "pgpool":
 		c.getCurrentUser()
 		c.collectPgpool()
-	} else if len(c.dbnames) == 1 && c.dbnames[0] == "pgbouncer" {
-		// pgbouncer mode:
-		c.result.Metadata.Mode = "pgbouncer"
+	case "pgbouncer":
 		c.collectPgBouncer()
-	} else {
-		// postgres mode:
-		c.result.Metadata.Mode = "postgres"
+	case "postgres":
 		c.getCurrentUser()
 		c.collectPostgres(o)
+	default:
+		log.Fatalf("unknown mode %q", c.mode)
 	}
 }
 
