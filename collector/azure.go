@@ -55,7 +55,7 @@ func collectAzure(ctx context.Context, resourceID string, out *pgmetrics.Azure) 
 	}
 
 	// create a client
-	client, err := armmonitor.NewMetricsClient(cred, nil)
+	client, err := armmonitor.NewMetricsClient(m[1], cred, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create client: %v", err)
 	}
