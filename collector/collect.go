@@ -241,14 +241,12 @@ func getConn(connstr string, o CollectConfig) *sql.DB {
 	if err != nil {
 		log.Fatalf("failed to parse connection string: %v", err)
 	}
-	isPgbouncer := cfg.Database == "pgbouncer"
-	if isPgbouncer {
-		cfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
-	}
+	// use simple protocol for maximum compatibility
+	cfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 	db := stdlib.OpenDB(*cfg)
 
 	// ping (does not work with pgx+pgbouncer)
-	if !isPgbouncer {
+	if cfg.Database != "pgbouncer" {
 		t := time.Duration(o.TimeoutSec) * time.Second
 		ctx, cancel := context.WithTimeout(context.Background(), t)
 		defer cancel()
