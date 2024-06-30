@@ -1743,7 +1743,7 @@ func (c *collector) getVacuumProgressv17() {
 		var p pgmetrics.VacuumProgressBackend
 		if err := rows.Scan(&p.PID, &p.DBName, &p.TableOID, &p.Phase, &p.HeapBlksTotal,
 			&p.HeapBlksScanned, &p.HeapBlksVacuumed, &p.IndexVacuumCount,
-			&p.MaxDeadTuples, &p.NumDeadTuples, &p.NumDeadItemIDs,
+			&p.MaxDeadTupleBytes, &p.DeadTupleBytes, &p.NumDeadItemIDs,
 			&p.IndexesTotal, &p.IndexesProcessed); err != nil {
 			log.Fatalf("pg_stat_progress_vacuum query failed: %v", err)
 		}

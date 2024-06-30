@@ -499,14 +499,16 @@ type VacuumProgressBackend struct {
 	HeapBlksScanned  int64  `json:"heap_blks_scanned"`
 	HeapBlksVacuumed int64  `json:"heap_blks_vacuumed"`
 	IndexVacuumCount int64  `json:"index_vacuum_count"`
-	MaxDeadTuples    int64  `json:"max_dead_tuples"` // == max_dead_tuple_bytes in pg >= v17
-	NumDeadTuples    int64  `json:"num_dead_tuples"` // == dead_tuple_bytes in pg >= v17
+	MaxDeadTuples    int64  `json:"max_dead_tuples"` // pg <= v16
+	NumDeadTuples    int64  `json:"num_dead_tuples"` // pg <= v16
 	// following fields present only in schema 1.12 and later
 	PID int `json:"pid,omitempty"`
 	// following fields present only in schema 1.17 and later
-	NumDeadItemIDs   int64 `json:"num_dead_item_ids,omitempty"` // pg >= v17
-	IndexesTotal     int64 `json:"indexes_total,omitempty"`     // pg >= v17
-	IndexesProcessed int64 `json:"indexes_processed,omitempty"` // pg >= v17
+	MaxDeadTupleBytes int64 `json:"max_dead_tuple_bytes"`        // pg >= v17
+	DeadTupleBytes    int64 `json:"dead_tuple_bytess"`           // pg >= v17
+	NumDeadItemIDs    int64 `json:"num_dead_item_ids,omitempty"` // pg >= v17
+	IndexesTotal      int64 `json:"indexes_total,omitempty"`     // pg >= v17
+	IndexesProcessed  int64 `json:"indexes_processed,omitempty"` // pg >= v17
 }
 
 type Extension struct {
