@@ -3071,6 +3071,10 @@ func (c *collector) getPBPools() {
  *            connect_time, request_time, wait, wait_us, close_needed, ptr,
  *            link, remote_pid, tls, application_name, prepared_statements
  * 1.22: same as 1.21
+ * 1.23: (20) type, user, database, replication, state, addr, port, local_addr,
+ *            local_port, connect_time, request_time, wait, wait_us,
+ *            close_needed, ptr, link, remote_pid, tls, application_name,
+ *            prepared_statements
  */
 
 func (c *collector) getPBServers() {
@@ -3089,7 +3093,7 @@ func (c *collector) getPBServers() {
 	}
 
 	for rows.Next() {
-		var s [16]sql.NullString
+		var s [17]sql.NullString
 		var state string
 		var wait, waitUs float64
 		if ncols == 16 {
@@ -3107,6 +3111,10 @@ func (c *collector) getPBServers() {
 			err = rows.Scan(&s[0], &s[1], &s[2], &state, &s[3], &s[4], &s[5],
 				&s[6], &s[7], &s[8], &wait, &waitUs, &s[9], &s[10], &s[11], &s[12],
 				&s[13], &s[14], &s[15])
+		} else if ncols == 20 {
+			err = rows.Scan(&s[0], &s[1], &s[2], &s[3], &state, &s[4], &s[5], &s[6],
+				&s[7], &s[8], &s[9], &wait, &waitUs, &s[10], &s[11], &s[12],
+				&s[13], &s[14], &s[15], &s[16])
 		} else {
 			log.Fatalf("pgbouncer: unsupported number of columns %d in 'SHOW SERVERS'", ncols)
 		}
@@ -3148,6 +3156,10 @@ func (c *collector) getPBServers() {
  *            connect_time, request_time, wait, wait_us, close_needed, ptr,
  *            link, remote_pid, tls, application_name, prepared_statements
  * 1.22: same as 1.21
+ * 1.23: (20) type, user, database, replication, state, addr, port, local_addr,
+ *            local_port, connect_time, request_time, wait, wait_us,
+ *            close_needed, ptr, link, remote_pid, tls, application_name,
+ *            prepared_statements
  */
 
 func (c *collector) getPBClients() {
@@ -3167,7 +3179,7 @@ func (c *collector) getPBClients() {
 
 	var totalWait float64
 	for rows.Next() {
-		var s [16]sql.NullString
+		var s [17]sql.NullString
 		var state string
 		var wait, waitUs float64
 		if ncols == 16 {
@@ -3185,6 +3197,10 @@ func (c *collector) getPBClients() {
 			err = rows.Scan(&s[0], &s[1], &s[2], &state, &s[3], &s[4], &s[5],
 				&s[6], &s[7], &s[8], &wait, &waitUs, &s[9], &s[10], &s[11], &s[12],
 				&s[13], &s[14], &s[15])
+		} else if ncols == 20 {
+			err = rows.Scan(&s[0], &s[1], &s[2], &s[3], &state, &s[4], &s[5], &s[6],
+				&s[7], &s[8], &s[9], &wait, &waitUs, &s[10], &s[11], &s[12], &s[13],
+				&s[14], &s[15], &s[16])
 		} else {
 			log.Fatalf("pgbouncer: unsupported number of columns %d in 'SHOW CLIENTS'", ncols)
 		}
@@ -3229,6 +3245,11 @@ func (c *collector) getPBClients() {
  * 1.20: same as 1.19
  * 1.21: same as 1.20
  * 1.22: same as 1.21
+ * 1.23: (17) database, total_server_assignment_count, total_xact_count,
+ *            total_query_count, total_received, total_sent, total_xact_time,
+ *            total_query_time, total_wait_time, avg_server_assignment_count,
+ *            avg_xact_count, avg_query_count, avg_recv, avg_sent,
+ *            avg_xact_time, avg_query_time, avg_wait_time
  */
 
 func (c *collector) getPBStats() {
@@ -3241,13 +3262,31 @@ func (c *collector) getPBStats() {
 	}
 	defer rows.Close()
 
+	var ncols int
+	if cols, err := rows.Columns(); err == nil {
+		ncols = len(cols)
+	}
+
 	for rows.Next() {
 		var stat pgmetrics.PgBouncerStat
-		if err := rows.Scan(&stat.Database, &stat.TotalXactCount, &stat.TotalQueryCount,
-			&stat.TotalReceived, &stat.TotalSent, &stat.TotalXactTime,
-			&stat.TotalQueryTime, &stat.TotalWaitTime, &stat.AvgXactCount,
-			&stat.AvgQueryCount, &stat.AvgReceived, &stat.AvgSent, &stat.AvgXactTime,
-			&stat.AvgQueryTime, &stat.AvgWaitTime); err != nil {
+		var err error
+		if ncols == 15 {
+			err = rows.Scan(&stat.Database, &stat.TotalXactCount, &stat.TotalQueryCount,
+				&stat.TotalReceived, &stat.TotalSent, &stat.TotalXactTime,
+				&stat.TotalQueryTime, &stat.TotalWaitTime, &stat.AvgXactCount,
+				&stat.AvgQueryCount, &stat.AvgReceived, &stat.AvgSent, &stat.AvgXactTime,
+				&stat.AvgQueryTime, &stat.AvgWaitTime)
+		} else if ncols == 17 {
+			err = rows.Scan(&stat.Database, &stat.TotalServerAssignmentCount,
+				&stat.TotalXactCount, &stat.TotalQueryCount,
+				&stat.TotalReceived, &stat.TotalSent, &stat.TotalXactTime,
+				&stat.TotalQueryTime, &stat.TotalWaitTime, &stat.AvgXactCount,
+				&stat.AvgQueryCount, &stat.AvgReceived, &stat.AvgSent, &stat.AvgXactTime,
+				&stat.AvgQueryTime, &stat.AvgWaitTime, &stat.AvgServerAssignmentCount)
+		} else {
+			log.Fatalf("pgbouncer: unsupported number of columns %d in 'SHOW STATS'", ncols)
+		}
+		if err != nil {
 			log.Fatalf("pgbouncer: show stats query failed: %v", err)
 		}
 		// convert usec -> sec
@@ -3278,6 +3317,9 @@ func (c *collector) getPBStats() {
  * 1.20: same as 1.19
  * 1.21: same as 1.20
  * 1.22: same as 1.21
+ * 1.23: (14) name, host, port, database, force_user, pool_size, min_pool_size,
+ *            reserve_pool, server_lifetime, pool_mode, max_connections,
+ *            current_connections, paused, disabled
  */
 
 func (c *collector) getPBDatabases() {
@@ -3298,7 +3340,7 @@ func (c *collector) getPBDatabases() {
 	for rows.Next() {
 		var db pgmetrics.PgBouncerDatabase
 		var host, user sql.NullString
-		var s [4]sql.NullString
+		var s [5]sql.NullString
 		var paused, disabled int
 		if ncols == 12 {
 			err = rows.Scan(&db.Database, &host, &db.Port, &db.SourceDatabase,
@@ -3307,6 +3349,10 @@ func (c *collector) getPBDatabases() {
 		} else if ncols == 13 {
 			err = rows.Scan(&db.Database, &host, &db.Port, &db.SourceDatabase,
 				&user, &s[0], &s[1], &s[2], &s[3], &db.MaxConn, &db.CurrConn,
+				&paused, &disabled)
+		} else if ncols == 14 {
+			err = rows.Scan(&db.Database, &host, &db.Port, &db.SourceDatabase,
+				&user, &s[0], &s[1], &s[2], &s[3], &s[4], &db.MaxConn, &db.CurrConn,
 				&paused, &disabled)
 		} else {
 			log.Fatalf("pgbouncer: unsupported number of columns %d in 'SHOW DATABASES'", ncols)

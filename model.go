@@ -782,6 +782,10 @@ type PgBouncerStat struct {
 	AvgXactTime     float64 `json:"avg_xact_time"`  // seconds
 	AvgQueryTime    float64 `json:"avg_query_time"` // seconds
 	AvgWaitTime     float64 `json:"avg_wait_time"`  // seconds
+
+	// following fields present only in schema 1.17 and later
+	TotalServerAssignmentCount int64 `json:"total_server_assignment_count,omitempty"` // only in pgbouncer >= v1.23
+	AvgServerAssignmentCount   int64 `json:"avg_server_assignment_count,omitempty"`   // only in pgbouncer >= v1.23
 }
 
 // Plan represents a query execution plan. Added in schema 1.7.
