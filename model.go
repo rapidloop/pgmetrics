@@ -189,6 +189,16 @@ type Model struct {
 
 	// contents of pg_stat_checkpointer, pg >= v17
 	Checkpointer *Checkpointer `json:"checkpointer,omitempty"`
+
+	// a 4-tuple of client address, client port, server address, server port
+	// if connected via tcp, like SSH_CONNECTION
+	ConnectionTuple string `json:"connection_tuple,omitempty"`
+
+	// value of version()
+	FullVersion string `json:"full_version,omitempty"`
+
+	// value of pg_conf_load_time() as seconds since epoch
+	ConfLoadTime int64 `json:"conf_load_time,omitempty"`
 }
 
 // DatabaseByOID iterates over the databases in the model and returns the reference

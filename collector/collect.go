@@ -429,7 +429,7 @@ func (c *collector) collectNext(db *sql.DB, o CollectConfig) {
 
 // cluster-level info and stats
 func (c *collector) collectCluster(o CollectConfig) {
-	c.getStartTime()
+	c.getPGSystemInfo()
 
 	if c.version >= pgv96 {
 		c.getControlSystemv96()
@@ -1073,13 +1073,22 @@ func (c *collector) getLastXactv95() {
 	}
 }
 
-func (c *collector) getStartTime() {
+func (c *collector) getPGSystemInfo() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	q := `SELECT EXTRACT(EPOCH FROM pg_postmaster_start_time())::bigint`
-	if err := c.db.QueryRowContext(ctx, q).Scan(&c.result.StartTime); err != nil {
-		log.Fatalf("pg_postmaster_start_time() failed: %v", err)
+	q := `SELECT
+			version(), -- version
+			EXTRACT(EPOCH FROM pg_postmaster_start_time())::bigint, -- start time
+			COALESCE(EXTRACT(EPOCH FROM pg_conf_load_time())::bigint, 0), -- conf load time
+			COALESCE(host(inet_client_addr()) || ' ' || inet_client_port()::text ||
+				' ' || host(inet_server_addr()) || ' ' || inet_server_port()::text, '') -- conn tuple`
+	if err := c.db.QueryRowContext(ctx, q).Scan(
+		&c.result.FullVersion,
+		&c.result.StartTime,
+		&c.result.ConfLoadTime,
+		&c.result.ConnectionTuple); err != nil {
+		log.Fatalf("system functions query failed: %v", err)
 	}
 }
 
