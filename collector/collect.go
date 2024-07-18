@@ -299,7 +299,7 @@ func collectFromDB(connstr string, c *collector, o CollectConfig) {
 }
 
 func getDBNames(connstr string, o CollectConfig) (dbnames []string) {
-	db := getConn(connstr, o)
+	db := getConn(connstr + makeKV("dbname", "postgres"), o)
 	defer db.Close()
 
 	timeout := time.Duration(o.TimeoutSec) * time.Second
