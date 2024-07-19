@@ -886,9 +886,10 @@ func (c *collector) getWalReceiverv13() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	q := `SELECT status, receive_start_lsn, receive_start_tli, written_lsn,
-			flushed_lsn, received_tli, last_msg_send_time, last_msg_receipt_time,
-			latest_end_lsn,
+	q := `SELECT status, receive_start_lsn, receive_start_tli,
+			COALESCE(written_lsn::text, ''), COALESCE(flushed_lsn::text, ''),
+			received_tli, last_msg_send_time, last_msg_receipt_time,
+			COALESCE(latest_end_lsn::text, ''),
 			COALESCE(EXTRACT(EPOCH FROM latest_end_time)::bigint, 0),
 			COALESCE(slot_name, ''), conninfo, @sender_host@
 		  FROM pg_stat_wal_receiver`
