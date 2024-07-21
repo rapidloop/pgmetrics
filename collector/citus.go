@@ -189,8 +189,8 @@ func (c *collector) getCitusBackendsv11() []pgmetrics.CitusBackendV11 {
 			COALESCE(EXTRACT(EPOCH FROM query_start)::bigint, 0),
 			COALESCE(EXTRACT(EPOCH FROM state_change)::bigint, 0),
 			COALESCE(wait_event_type, ''), COALESCE(wait_event, ''),
-			COALESCE(state, ''), COALESCE(backend_xid, ''),
-			COALESCE(backend_xmin, ''), LEFT(COALESCE(query, ''), $1),
+			COALESCE(state, ''), COALESCE(backend_xid::text::bigint, 0),
+			COALESCE(backend_xmin::text::bigint, 0), LEFT(COALESCE(query, ''), $1),
 			COALESCE(global_pid, 0), COALESCE(nodeid, 0),
 			COALESCE(is_worker_query, false), COALESCE(query_id, 0),
 			COALESCE(backend_type, '')
