@@ -213,7 +213,6 @@ func Collect(o CollectConfig, dbnames []string) *pgmetrics.Model {
 		if os.Getenv("PGSSLMODE") == "" {
 			connstr += makeKV("sslmode", "disable")
 		}
-		connstr += makeKV("application_name", "pgmetrics")
 		if len(dbnames) == 1 && dbnames[0] == "pgbouncer" {
 			mode = "pgbouncer"
 		}
@@ -227,6 +226,9 @@ func Collect(o CollectConfig, dbnames []string) *pgmetrics.Model {
 		connstr += makeKV("lock_timeout", strconv.Itoa(int(o.LockTimeoutMillisec)))
 		connstr += makeKV("statement_timeout", strconv.Itoa(int(o.TimeoutSec)*1000))
 	}
+
+	// set application name
+	connstr += makeKV("application_name", "pgmetrics")
 
 	// use simple protocol for maximum compatibility (pgx-specific keyword)
 	connstr += makeKV("default_query_exec_mode", "simple_protocol")
@@ -299,7 +301,7 @@ func collectFromDB(connstr string, c *collector, o CollectConfig) {
 }
 
 func getDBNames(connstr string, o CollectConfig) (dbnames []string) {
-	db := getConn(connstr + makeKV("dbname", "postgres"), o)
+	db := getConn(connstr+makeKV("dbname", "postgres"), o)
 	defer db.Close()
 
 	timeout := time.Duration(o.TimeoutSec) * time.Second
