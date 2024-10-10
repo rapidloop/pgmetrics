@@ -1964,6 +1964,20 @@ func (c *collector) getDisabledTriggers() {
 	}
 }
 
+func (c *collector) getStatementsSchema() string {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	var schema string
+	q := `SELECT extnamespace::regnamespace FROM pg_extension WHERE extname = 'pg_stat_statements'`
+	if err := c.db.QueryRowContext(ctx, q).Scan(&schema); err != nil {
+		log.Fatalf("pg_extension query failed: %v", err)
+		return "public"
+	}
+
+	return schema
+}
+
 func (c *collector) getStatements(currdb string) {
 	// Even if PSS is installed only in one database, querying it gives queries
 	// from across all databases. Fetching this information once is enough.
@@ -2016,10 +2030,10 @@ func (c *collector) getStatementsv111(currdb string) {
 			jit_emission_count, jit_emission_time, local_blk_read_time,
 			local_blk_write_time, jit_deform_count, jit_deform_time,
 			stats_since, minmax_stats_since
-		  FROM pg_stat_statements
+		  FROM %s.pg_stat_statements
 		  ORDER BY total_exec_time DESC
 		  LIMIT $2`
-	rows, err := c.db.QueryContext(ctx, q, c.sqlLength, c.stmtsLimit)
+	rows, err := c.db.QueryContext(ctx, fmt.Sprintf(q, c.getStatementsSchema()), c.sqlLength, c.stmtsLimit)
 	if err != nil {
 		log.Printf("warning: pg_stat_statements query failed: %v", err)
 		return
@@ -2084,10 +2098,10 @@ func (c *collector) getStatementsv110(currdb string) {
 			jit_functions, jit_generation_time, jit_inlining_count,
 			jit_inlining_time, jit_optimization_count, jit_optimization_time,
 			jit_emission_count, jit_emission_time
-		  FROM pg_stat_statements
+		  FROM %s.pg_stat_statements
 		  ORDER BY total_exec_time DESC
 		  LIMIT $2`
-	rows, err := c.db.QueryContext(ctx, q, c.sqlLength, c.stmtsLimit)
+	rows, err := c.db.QueryContext(ctx, fmt.Sprintf(q, c.getStatementsSchema()), c.sqlLength, c.stmtsLimit)
 	if err != nil {
 		log.Printf("warning: pg_stat_statements query failed: %v", err)
 		return
@@ -2142,10 +2156,10 @@ func (c *collector) getStatementsv19(currdb string) {
 			plans, total_plan_time, min_plan_time, max_plan_time,
 			stddev_plan_time, wal_records, wal_fpi, wal_bytes::bigint,
 			toplevel
-		  FROM pg_stat_statements
+		  FROM %s.pg_stat_statements
 		  ORDER BY total_exec_time DESC
 		  LIMIT $2`
-	rows, err := c.db.QueryContext(ctx, q, c.sqlLength, c.stmtsLimit)
+	rows, err := c.db.QueryContext(ctx, fmt.Sprintf(q, c.getStatementsSchema()), c.sqlLength, c.stmtsLimit)
 	if err != nil {
 		log.Printf("warning: pg_stat_statements query failed: %v", err)
 		return
@@ -2195,10 +2209,10 @@ func (c *collector) getStatementsv18(currdb string) {
 			temp_blks_written, blk_read_time, blk_write_time,
 			plans, total_plan_time, min_plan_time, max_plan_time,
 			stddev_plan_time, wal_records, wal_fpi, wal_bytes::bigint
-		  FROM pg_stat_statements
+		  FROM %s.pg_stat_statements
 		  ORDER BY total_exec_time DESC
 		  LIMIT $2`
-	rows, err := c.db.QueryContext(ctx, q, c.sqlLength, c.stmtsLimit)
+	rows, err := c.db.QueryContext(ctx, fmt.Sprintf(q, c.getStatementsSchema()), c.sqlLength, c.stmtsLimit)
 	if err != nil {
 		log.Printf("warning: pg_stat_statements query failed: %v", err)
 		return
@@ -2246,10 +2260,10 @@ func (c *collector) getStatementsPrev18(currdb string) {
 			local_blks_hit, local_blks_read, local_blks_dirtied,
 			local_blks_written, temp_blks_read, temp_blks_written,
 			blk_read_time, blk_write_time
-		  FROM pg_stat_statements
+		  FROM %s.pg_stat_statements
 		  ORDER BY total_time DESC
 		  LIMIT $2`
-	rows, err := c.db.QueryContext(ctx, q, c.sqlLength, c.stmtsLimit)
+	rows, err := c.db.QueryContext(ctx, fmt.Sprintf(q, c.getStatementsSchema()), c.sqlLength, c.stmtsLimit)
 	if err != nil {
 		// If we get an error about "min_time" we probably have an old (v1.2)
 		// version of pg_stat_statements which does not have min_time, max_time
