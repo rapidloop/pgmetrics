@@ -1971,7 +1971,8 @@ func (c *collector) getStatementsSchema() string {
 	var schema string
 	q := `SELECT extnamespace::regnamespace FROM pg_extension WHERE extname = 'pg_stat_statements'`
 	if err := c.db.QueryRowContext(ctx, q).Scan(&schema); err != nil {
-		log.Fatalf("pg_extension query failed: %v", err)
+		log.Printf("warning: pg_extension query failed: %v", err)
+		return "public"
 	}
 
 	return schema
