@@ -524,6 +524,7 @@ type VacuumProgressBackend struct {
 type Extension struct {
 	Name             string `json:"name"`
 	DBName           string `json:"db_name"`
+	SchemaName       string `json:"schema_name"`
 	DefaultVersion   string `json:"default_version"`
 	InstalledVersion string `json:"installed_version"`
 	Comment          string `json:"comment"`

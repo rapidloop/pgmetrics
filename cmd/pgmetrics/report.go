@@ -908,9 +908,9 @@ Database #%d:
 			fmt.Fprint(fd, `    Installed Extensions:
 `)
 			var tw tableWriter
-			tw.add("Name", "Version", "Comment")
+			tw.add("Name", "Schema", "Version", "Comment")
 			for _, ext := range exts {
-				tw.add(ext.Name, ext.InstalledVersion, ext.Comment)
+				tw.add(ext.Name, ext.SchemaName, ext.InstalledVersion, ext.Comment)
 			}
 			tw.write(fd, "      ")
 			gap = true
