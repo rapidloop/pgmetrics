@@ -19,6 +19,7 @@ package pgmetrics
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
 //
+//	1.18 - Add schema name for extensions
 //	1.17 - Raw log entries, Postgres 17 support
 //	1.16 - Postgres 16 support
 //	1.15 - Pgpool ReplicationDelaySeconds
@@ -38,7 +39,7 @@ package pgmetrics
 //	1.2 - more table and index attributes
 //	1.1 - added NotificationQueueUsage and Statements
 //	1.0 - initial release
-const ModelSchemaVersion = "1.17"
+const ModelSchemaVersion = "1.18"
 
 // Model contains the entire information collected by a single run of
 // pgmetrics. It can be converted to and from json without loss of
@@ -524,10 +525,11 @@ type VacuumProgressBackend struct {
 type Extension struct {
 	Name             string `json:"name"`
 	DBName           string `json:"db_name"`
-	SchemaName       string `json:"schema_name"`
 	DefaultVersion   string `json:"default_version"`
 	InstalledVersion string `json:"installed_version"`
 	Comment          string `json:"comment"`
+	// following fields present only in schema 1.18 and later
+	SchemaName string `json:"schema_name"`
 }
 
 type Setting struct {
