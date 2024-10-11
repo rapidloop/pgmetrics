@@ -1806,10 +1806,14 @@ func (c *collector) getExtensions() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	q := `SELECT name, current_database(), COALESCE(default_version, ''),
-			COALESCE(installed_version, ''), COALESCE(comment, '')
-		  FROM pg_available_extensions
-		  WHERE installed_version IS NOT NULL
+	q := `SELECT e.name AS name, current_database(),
+		  	COALESCE(e.default_version, ''),
+		  	x.extversion,
+		  	COALESCE(e.comment, ''),
+		  	x.extnamespace::regnamespace
+		  FROM pg_available_extensions() e(name, default_version, comment)
+		  LEFT JOIN pg_extension x ON e.name = x.extname
+		  WHERE x.extversion IS NOT NULL
 		  ORDER BY name ASC`
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
@@ -1820,7 +1824,7 @@ func (c *collector) getExtensions() {
 	for rows.Next() {
 		var e pgmetrics.Extension
 		if err := rows.Scan(&e.Name, &e.DBName, &e.DefaultVersion,
-			&e.InstalledVersion, &e.Comment); err != nil {
+			&e.InstalledVersion, &e.Comment, &e.SchemaName); err != nil {
 			log.Fatalf("pg_available_extensions query failed: %v", err)
 		}
 		c.result.Extensions = append(c.result.Extensions, e)
@@ -1964,20 +1968,6 @@ func (c *collector) getDisabledTriggers() {
 	}
 }
 
-func (c *collector) getStatementsSchema() string {
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
-	defer cancel()
-
-	var schema string
-	q := `SELECT extnamespace::regnamespace FROM pg_extension WHERE extname = 'pg_stat_statements'`
-	if err := c.db.QueryRowContext(ctx, q).Scan(&schema); err != nil {
-		log.Printf("warning: pg_extension query failed: %v", err)
-		return "public"
-	}
-
-	return schema
-}
-
 func (c *collector) getStatements(currdb string) {
 	// Even if PSS is installed only in one database, querying it gives queries
 	// from across all databases. Fetching this information once is enough.
@@ -1987,9 +1977,11 @@ func (c *collector) getStatements(currdb string) {
 
 	// Try to fetch only if PSS extension is installed.
 	var version string
+	var schema string
 	for _, e := range c.result.Extensions {
 		if e.Name == "pg_stat_statements" && e.DBName == currdb {
 			version = "v" + e.InstalledVersion
+			schema = e.SchemaName
 			break
 		}
 	}
@@ -2000,19 +1992,19 @@ func (c *collector) getStatements(currdb string) {
 	// Collect based on pss version, not pg version. This allows for cases when
 	// postgres is upgraded, but not the extension.
 	if semver.Compare(version, "v1.11") >= 0 { // pg v17
-		c.getStatementsv111(currdb)
+		c.getStatementsv111(currdb, schema)
 	} else if semver.Compare(version, "v1.10") >= 0 { // pg v15, pg v16
-		c.getStatementsv110(currdb)
+		c.getStatementsv110(currdb, schema)
 	} else if semver.Compare(version, "v1.9") >= 0 { // pg v14
-		c.getStatementsv19(currdb)
+		c.getStatementsv19(currdb, schema)
 	} else if semver.Compare(version, "v1.8") >= 0 { // pg v13
-		c.getStatementsv18(currdb)
+		c.getStatementsv18(currdb, schema)
 	} else {
-		c.getStatementsPrev18(currdb)
+		c.getStatementsPrev18(currdb, schema)
 	}
 }
 
-func (c *collector) getStatementsv111(currdb string) {
+func (c *collector) getStatementsv111(currdb string, schema string) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -2033,7 +2025,7 @@ func (c *collector) getStatementsv111(currdb string) {
 		  FROM %s.pg_stat_statements
 		  ORDER BY total_exec_time DESC
 		  LIMIT $2`
-	rows, err := c.db.QueryContext(ctx, fmt.Sprintf(q, c.getStatementsSchema()), c.sqlLength, c.stmtsLimit)
+	rows, err := c.db.QueryContext(ctx, fmt.Sprintf(q, schema), c.sqlLength, c.stmtsLimit)
 	if err != nil {
 		log.Printf("warning: pg_stat_statements query failed: %v", err)
 		return
@@ -2082,7 +2074,7 @@ func (c *collector) getStatementsv111(currdb string) {
 	}
 }
 
-func (c *collector) getStatementsv110(currdb string) {
+func (c *collector) getStatementsv110(currdb string, schema string) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -2101,7 +2093,7 @@ func (c *collector) getStatementsv110(currdb string) {
 		  FROM %s.pg_stat_statements
 		  ORDER BY total_exec_time DESC
 		  LIMIT $2`
-	rows, err := c.db.QueryContext(ctx, fmt.Sprintf(q, c.getStatementsSchema()), c.sqlLength, c.stmtsLimit)
+	rows, err := c.db.QueryContext(ctx, fmt.Sprintf(q, schema), c.sqlLength, c.stmtsLimit)
 	if err != nil {
 		log.Printf("warning: pg_stat_statements query failed: %v", err)
 		return
@@ -2143,7 +2135,7 @@ func (c *collector) getStatementsv110(currdb string) {
 	}
 }
 
-func (c *collector) getStatementsv19(currdb string) {
+func (c *collector) getStatementsv19(currdb string, schema string) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -2159,7 +2151,7 @@ func (c *collector) getStatementsv19(currdb string) {
 		  FROM %s.pg_stat_statements
 		  ORDER BY total_exec_time DESC
 		  LIMIT $2`
-	rows, err := c.db.QueryContext(ctx, fmt.Sprintf(q, c.getStatementsSchema()), c.sqlLength, c.stmtsLimit)
+	rows, err := c.db.QueryContext(ctx, fmt.Sprintf(q, schema), c.sqlLength, c.stmtsLimit)
 	if err != nil {
 		log.Printf("warning: pg_stat_statements query failed: %v", err)
 		return
@@ -2197,7 +2189,7 @@ func (c *collector) getStatementsv19(currdb string) {
 	}
 }
 
-func (c *collector) getStatementsv18(currdb string) {
+func (c *collector) getStatementsv18(currdb string, schema string) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -2212,7 +2204,7 @@ func (c *collector) getStatementsv18(currdb string) {
 		  FROM %s.pg_stat_statements
 		  ORDER BY total_exec_time DESC
 		  LIMIT $2`
-	rows, err := c.db.QueryContext(ctx, fmt.Sprintf(q, c.getStatementsSchema()), c.sqlLength, c.stmtsLimit)
+	rows, err := c.db.QueryContext(ctx, fmt.Sprintf(q, schema), c.sqlLength, c.stmtsLimit)
 	if err != nil {
 		log.Printf("warning: pg_stat_statements query failed: %v", err)
 		return
@@ -2250,7 +2242,7 @@ func (c *collector) getStatementsv18(currdb string) {
 	}
 }
 
-func (c *collector) getStatementsPrev18(currdb string) {
+func (c *collector) getStatementsPrev18(currdb string, schema string) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -2263,7 +2255,7 @@ func (c *collector) getStatementsPrev18(currdb string) {
 		  FROM %s.pg_stat_statements
 		  ORDER BY total_time DESC
 		  LIMIT $2`
-	rows, err := c.db.QueryContext(ctx, fmt.Sprintf(q, c.getStatementsSchema()), c.sqlLength, c.stmtsLimit)
+	rows, err := c.db.QueryContext(ctx, fmt.Sprintf(q, schema), c.sqlLength, c.stmtsLimit)
 	if err != nil {
 		// If we get an error about "min_time" we probably have an old (v1.2)
 		// version of pg_stat_statements which does not have min_time, max_time
