@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/rapidloop/pgmetrics"
@@ -1501,6 +1502,23 @@ func (c *collector) getCurrentDatabase() (dbname string) {
 }
 
 func (c *collector) getTables(fillSize bool) {
+	err := c.getTablesNoRetry(fillSize)
+	if err == nil {
+		return
+	}
+
+	if isLockTimeoutError(err) && fillSize {
+		// retry without call to pg_table_size
+		log.Print("warning: lock timeout during pg_table_size, skipping table size collection")
+		err = c.getTablesNoRetry(false)
+	}
+
+	if err != nil {
+		log.Fatalf("pg_stat(io)_user_tables query failed: %v", err)
+	}
+}
+
+func (c *collector) getTablesNoRetry(fillSize bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -1549,7 +1567,7 @@ func (c *collector) getTables(fillSize bool) {
 	}
 	rows, err := c.db.QueryContext(ctx, q, fillSize)
 	if err != nil {
-		log.Fatalf("pg_stat(io)_user_tables query failed: %v", err)
+		return err
 	}
 	defer rows.Close()
 
@@ -1568,7 +1586,7 @@ func (c *collector) getTables(fillSize bool) {
 			&t.RelIsPartition, &tblspcOID, &t.ACL, &t.NInsSinceVacuum,
 			&t.LastSeqScan, &t.LastIdxScan, &t.NTupNewpageUpd,
 			&t.Size); err != nil {
-			log.Fatalf("pg_stat(io)_user_tables query failed: %v", err)
+			return err
 		}
 		t.Bloat = -1 // will be filled in later
 		if tblspcOID != 0 {
@@ -1583,12 +1601,35 @@ func (c *collector) getTables(fillSize bool) {
 			c.result.Tables = append(c.result.Tables, t)
 		}
 	}
-	if err := rows.Err(); err != nil {
-		log.Fatalf("pg_stat(io)_user_tables query failed: %v", err)
+	return rows.Err()
+}
+
+func isLockTimeoutError(err error) bool {
+	if pgerr, ok := err.(*pgconn.PgError); ok {
+		// see https://www.postgresql.org/docs/current/errcodes-appendix.html
+		return pgerr.Code == "55P03"
 	}
+	return false
 }
 
 func (c *collector) getIndexes(fillSize bool) {
+	err := c.getIndexesNoRetry(fillSize)
+	if err == nil {
+		return
+	}
+
+	if isLockTimeoutError(err) && fillSize {
+		// retry without call to pg_total_relation_size
+		log.Print("warning: lock timeout during pg_total_relation_size, skipping index size collection")
+		err = c.getIndexesNoRetry(false)
+	}
+
+	if err != nil {
+		log.Fatalf("pg_stat_user_indexes query failed: %v", err)
+	}
+}
+
+func (c *collector) getIndexesNoRetry(fillSize bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
@@ -1611,7 +1652,7 @@ func (c *collector) getIndexes(fillSize bool) {
 	}
 	rows, err := c.db.QueryContext(ctx, q, fillSize)
 	if err != nil {
-		log.Fatalf("pg_stat_user_indexes query failed: %v", err)
+		return err
 	}
 	defer rows.Close()
 
@@ -1623,7 +1664,7 @@ func (c *collector) getIndexes(fillSize bool) {
 			&idx.IdxTupRead, &idx.IdxTupFetch, &idx.IdxBlksRead,
 			&idx.IdxBlksHit, &idx.RelNAtts, &idx.AMName, &tblspcOID,
 			&idx.LastIdxScan, &idx.Size); err != nil {
-			log.Fatalf("pg_stat_user_indexes query failed: %v", err)
+			return err
 		}
 		idx.Bloat = -1 // will be filled in later
 		if tblspcOID != 0 {
@@ -1638,9 +1679,7 @@ func (c *collector) getIndexes(fillSize bool) {
 			c.result.Indexes = append(c.result.Indexes, idx)
 		}
 	}
-	if err := rows.Err(); err != nil {
-		log.Fatalf("pg_stat_user_indexes query failed: %v", err)
-	}
+	return rows.Err()
 }
 
 // getIndexDef gets the definition of all indexes. Used to be collected along
