@@ -510,6 +510,11 @@ func compilePrefix(prefix string) (*regexp.Regexp, error) {
 			if !hasq {
 				r += `?`
 			}
+		case 'a': // application name
+			r += `(?P<a>.{1,64})`
+			if !hasq {
+				r += `?`
+			}
 		case 'Q': // query identifier
 			r += `(?P<Q>-?\d+)`
 		case 'q': // rest are optional
