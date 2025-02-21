@@ -99,6 +99,7 @@ type CollectConfig struct {
 	AllDBs          bool
 	AzureResourceID string
 	Pgpool          bool // collect only pgpool information
+	UseExtendedQP   bool // use extended query protocol instead of simple
 
 	// connection
 	Host     string
@@ -115,21 +116,13 @@ func DefaultCollectConfig() CollectConfig {
 		// ------------------ general
 		TimeoutSec:          5,
 		LockTimeoutMillisec: 50,
-		//NoSizes: false,
 
 		// ------------------ collection
-		//Schema: "",
-		//ExclSchema: "",
-		//Table: "",
-		//ExclTable: "",
-		//Omit: nil,
-		//OnlyListedDBs: false,
 		SQLLength:  500,
 		StmtsLimit: 100,
 		LogSpan:    5,
 
 		// ------------------ connection
-		//Password: "",
 	}
 
 	// connection: host
@@ -231,8 +224,13 @@ func Collect(o CollectConfig, dbnames []string) *pgmetrics.Model {
 	// set application name
 	connstr += makeKV("application_name", "pgmetrics")
 
-	// use simple protocol for maximum compatibility (pgx-specific keyword)
-	connstr += makeKV("default_query_exec_mode", "simple_protocol")
+	// Using simple protocol for maximum compatibility is the default for
+	// pgmetrics. This is selected by adding default_query_exec_mode=simple_protocol
+	// to the connection string. To use extended query protocol, nothing needs
+	// to be added.
+	if !o.UseExtendedQP {
+		connstr += makeKV("default_query_exec_mode", "simple_protocol")
+	}
 
 	// if "all DBs" was specified, collect the names of databases first
 	if o.AllDBs {

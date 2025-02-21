@@ -61,6 +61,8 @@ Collection options:
                                    queries (default: 500)
       --statements-limit=LIMIT collect only utmost LIMIT number of row from
                                    pg_stat_statements (default: 100)
+      --query-proto=PROTO      which query wire protocol to use; "simple" or
+                                   "extended" (default: "simple")
       --only-listed            collect info only from the databases listed as
                                    command-line args (use with Heroku)
       --all-dbs                collect info from all user databases
@@ -151,7 +153,8 @@ type options struct {
 	tooLongSec uint
 	nopager    bool
 	// connection
-	passNone bool
+	passNone   bool
+	queryProto string
 }
 
 func (o *options) defaults() {
@@ -169,6 +172,7 @@ func (o *options) defaults() {
 	o.nopager = false
 	// connection
 	o.passNone = false
+	o.queryProto = "simple"
 }
 
 func (o *options) usage(code int) {
@@ -234,6 +238,7 @@ func (o *options) parse() (args []string) {
 	s.StringVarLong(&o.CollectConfig.User, "username", 'U', "")
 	s.BoolVarLong(&o.passNone, "no-password", 'w', "")
 	s.StringVarLong(&o.CollectConfig.Role, "role", 0, "")
+	s.StringVarLong(&o.queryProto, "query-proto", 0, "")
 
 	// parse
 	s.Parse(os.Args)
@@ -295,6 +300,13 @@ func (o *options) parse() (args []string) {
 			printTry()
 			os.Exit(2)
 		}
+	}
+	if o.queryProto != "simple" && o.queryProto != "extended" {
+		fmt.Fprintln(os.Stderr, `option --query-proto must be "simple" or "extended"`)
+		printTry()
+		os.Exit(2)
+	} else {
+		o.CollectConfig.UseExtendedQP = o.queryProto == "extended"
 	}
 
 	// help action
