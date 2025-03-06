@@ -33,4 +33,6 @@ release:
     name: pgmetrics
   name_template: 'Release {{.Version}}'
 checksum:
+git:
+  tag_sort: -version:creatordate
 
