@@ -19,6 +19,7 @@ package pgmetrics
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
 //
+//	1.19 - Postgres 18 support
 //	1.18 - Add schema name for extensions
 //	1.17 - Raw log entries, Postgres 17 support
 //	1.16 - Postgres 16 support
@@ -39,7 +40,7 @@ package pgmetrics
 //	1.2 - more table and index attributes
 //	1.1 - added NotificationQueueUsage and Statements
 //	1.0 - initial release
-const ModelSchemaVersion = "1.18"
+const ModelSchemaVersion = "1.19"
 
 // Model contains the entire information collected by a single run of
 // pgmetrics. It can be converted to and from json without loss of
@@ -936,10 +937,10 @@ type WAL struct {
 	FPI         int64   `json:"fpi"`
 	Bytes       int64   `json:"bytes"`
 	BuffersFull int64   `json:"buffers_full"`
-	Write       int64   `json:"write"`
-	Sync        int64   `json:"sync"`
-	WriteTime   float64 `json:"write_time"` // in milliseconds
-	SyncTime    float64 `json:"sync_time"`  // in milliseconds
+	Write       int64   `json:"write"`      // 0 in pg >= 18
+	Sync        int64   `json:"sync"`       // 0 in pg >= 18
+	WriteTime   float64 `json:"write_time"` // in milliseconds, 0 in pg >= 18
+	SyncTime    float64 `json:"sync_time"`  // in milliseconds, 0 in pg >= 18
 	StatsReset  int64   `json:"stats_reset"`
 }
 

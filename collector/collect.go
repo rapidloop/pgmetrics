@@ -52,6 +52,7 @@ const (
 	pgv15 = 15_00_00
 	pgv16 = 16_00_00
 	pgv17 = 17_00_00
+	pgv18 = 18_00_00
 )
 
 // See https://www.postgresql.org/docs/current/static/libpq-connect.html#LIBPQ-CONNSTRING
@@ -517,7 +518,9 @@ func (c *collector) collectCluster(o CollectConfig) {
 
 	c.getLocks()
 
-	if c.version >= pgv14 {
+	if c.version >= pgv18 {
+		c.getWALv18()
+	} else if c.version >= pgv14 {
 		c.getWAL()
 	}
 
@@ -2816,6 +2819,33 @@ func (c *collector) getWAL() {
 	err := c.db.QueryRowContext(ctx, q).Scan(&w.Records, &w.FPI, &w.Bytes,
 		&w.BuffersFull, &w.Write, &w.Sync, &w.WriteTime, &w.SyncTime,
 		&w.StatsReset)
+	if err != nil {
+		log.Fatalf("pg_stat_wal query failed: %v", err)
+	}
+	c.result.WAL = &w
+}
+
+func (c *collector) getWALv18() {
+	// skip if Aurora, because the function errors out with:
+	// "Function pg_stat_get_wal() is currently not supported for Aurora"
+	if c.isAWSAurora() {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	// In PostgreSQL 18, wal_write, wal_sync, wal_write_time, wal_sync_time
+	// columns were removed from pg_stat_wal and moved to pg_stat_io
+	// pg_stat_wal has only 1 row
+	q := `SELECT wal_records, wal_fpi, wal_bytes, wal_buffers_full,
+			     COALESCE(EXTRACT(EPOCH FROM stats_reset)::bigint, 0)
+		  FROM   pg_stat_wal
+		  LIMIT  1`
+
+	var w pgmetrics.WAL
+	err := c.db.QueryRowContext(ctx, q).Scan(&w.Records, &w.FPI, &w.Bytes,
+		&w.BuffersFull, &w.StatsReset)
 	if err != nil {
 		log.Fatalf("pg_stat_wal query failed: %v", err)
 	}
