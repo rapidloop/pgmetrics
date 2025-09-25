@@ -683,6 +683,10 @@ type Statement struct {
 	JITDeformTime        float64 `json:"jit_deform_time,omitempty"`        // pg >= v17
 	StatsSince           int64   `json:"stats_since,omitempty"`            // pg >= v17
 	MinMaxStatsSince     int64   `json:"minmax_stats_since,omitempty"`     // pg >= v17
+	// following fields present only in schema 1.19 and later
+	WALBuffersFull          int64 `json:"wal_buffers_full,omitempty"`           // pg >= v18
+	ParallelWorkersToLaunch int64 `json:"parallel_workers_to_launch,omitempty"` // pg >= v18
+	ParallelWorkersLaunched int64 `json:"parallel_workers_launched,omitempty"`  // pg >= v18
 }
 
 // Publication represents a single v10+ publication. Added in schema 1.2.
