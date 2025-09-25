@@ -1541,7 +1541,8 @@ func (c *collector) getTablesNoRetry(fillSize bool) error {
 			C.relispartition, C.reltablespace, COALESCE(array_to_string(C.relacl, E'\n'), ''),
 			S.n_ins_since_vacuum,
 			@last_seq_scan@, @last_idx_scan@, @n_tup_newpage_upd@,
-            CASE WHEN $1 THEN COALESCE(pg_table_size(S.relid), -1) ELSE -1 END
+            CASE WHEN $1 THEN COALESCE(pg_table_size(S.relid), -1) ELSE -1 END,
+            @total_times@
 		  FROM pg_stat_user_tables AS S
 			JOIN pg_statio_user_tables AS IO
 			ON S.relid = IO.relid
@@ -1566,6 +1567,13 @@ func (c *collector) getTablesNoRetry(fillSize bool) error {
 		q = strings.Replace(q, "@last_idx_scan@", "COALESCE(EXTRACT(EPOCH FROM S.last_idx_scan)::bigint, 0)", 1)
 		q = strings.Replace(q, "@n_tup_newpage_upd@", "COALESCE(S.n_tup_newpage_upd, 0)", 1)
 	}
+	if c.version < pgv18 { // total_{auto,}{analyze,vacuum}_time only in pg >= 18
+		q = strings.Replace(q, "@total_times@", "0, 0, 0, 0", 1)
+	} else {
+		q = strings.Replace(q, "@total_times@",
+			"S.total_vacuum_time, S.total_autovacuum_time, S.total_analyze_time, S.total_autoanalyze_time",
+			1)
+	}
 	rows, err := c.db.QueryContext(ctx, q, fillSize)
 	if err != nil {
 		return err
@@ -1586,7 +1594,8 @@ func (c *collector) getTablesNoRetry(fillSize bool) error {
 			&t.RelKind, &t.RelPersistence, &t.RelNAtts, &t.AgeRelFrozenXid,
 			&t.RelIsPartition, &tblspcOID, &t.ACL, &t.NInsSinceVacuum,
 			&t.LastSeqScan, &t.LastIdxScan, &t.NTupNewpageUpd,
-			&t.Size); err != nil {
+			&t.Size, &t.TotalVacuumTime, &t.TotalAutovacuumTime,
+			&t.TotalAnalyzeTime, &t.TotalAutoanalyzeTime); err != nil {
 			return err
 		}
 		t.Bloat = -1 // will be filled in later

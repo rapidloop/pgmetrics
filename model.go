@@ -452,6 +452,11 @@ type Table struct {
 	LastSeqScan    int64 `json:"last_seq_scan,omitempty"`     // pg >= v16
 	LastIdxScan    int64 `json:"last_idx_scan,omitempty"`     // pg >= v16
 	NTupNewpageUpd int64 `json:"n_tup_newpage_upd,omitempty"` // pg >= v16
+	// following fields present only in schema 1.19 and later
+	TotalVacuumTime      float64 `json:"total_vacuum_time,omitempty"`      // millisecs, pg >= v18
+	TotalAutovacuumTime  float64 `json:"total_autovacuum_time,omitempty"`  // millisecs, pg >= v18
+	TotalAnalyzeTime     float64 `json:"total_analyze_time,omitempty"`     // millisecs, pg >= v18
+	TotalAutoanalyzeTime float64 `json:"total_autoanalyze_time,omitempty"` // millisecs, pg >= v18
 }
 
 type Index struct {
