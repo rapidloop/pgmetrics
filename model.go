@@ -1145,4 +1145,7 @@ type Checkpointer struct {
 	SyncTime               float64 `json:"sync_time"`
 	BuffersWritten         int64   `json:"buffers_written"`
 	StatsReset             int64   `json:"stats_reset"`
+	// following fields present only in schema 1.19 and later
+	NumDone     int64 `json:"num_done,omitempty"`     // pg >= v18
+	SLRUWritten int64 `json:"slru_written,omitempty"` // pg >= v18
 }

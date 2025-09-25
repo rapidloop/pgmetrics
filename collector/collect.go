@@ -3061,13 +3061,19 @@ func (c *collector) getCheckpointer() {
 
 	q := `SELECT num_timed, num_requested, restartpoints_timed,
 				restartpoints_req, restartpoints_done, write_time, sync_time,
-				buffers_written, COALESCE(EXTRACT(EPOCH FROM stats_reset)::bigint, 0)
+				buffers_written, COALESCE(EXTRACT(EPOCH FROM stats_reset)::bigint, 0),
+				num_done, slru_written
 		    FROM pg_stat_checkpointer`
+	if c.version < pgv18 { // num_done and slru_written only in pg >= v18
+		q = strings.Replace(q, "num_done", "0", 1)
+		q = strings.Replace(q, "slru_written", "0", 1)
+	}
 
 	var ckp pgmetrics.Checkpointer
 	err := c.db.QueryRowContext(ctx, q).Scan(&ckp.NumTimed, &ckp.NumRequested,
 		&ckp.RestartpointsTimed, &ckp.RestartpointsRequested, &ckp.RestartpointsDone,
-		&ckp.WriteTime, &ckp.SyncTime, &ckp.BuffersWritten, &ckp.StatsReset)
+		&ckp.WriteTime, &ckp.SyncTime, &ckp.BuffersWritten, &ckp.StatsReset,
+		&ckp.NumDone, &ckp.SLRUWritten)
 	if err != nil {
 		log.Fatalf("pg_stat_checkpointer query failed: %v", err)
 	}
