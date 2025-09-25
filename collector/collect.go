@@ -1379,7 +1379,8 @@ func (c *collector) getDatabases(fillSize, onlyListed bool, dbList []string) {
 			COALESCE(EXTRACT(EPOCH FROM S.stats_reset)::bigint, 0),
 			@checksum_failures@, @checksum_last_failure@,
 			S.session_time, S.active_time, S.idle_in_transaction_time,
-			S.sessions, S.sessions_abandoned, S.sessions_fatal, S.sessions_killed
+			S.sessions, S.sessions_abandoned, S.sessions_fatal, S.sessions_killed,
+			S.parallel_workers_to_launch, S.parallel_workers_launched
 		  FROM pg_database AS D JOIN pg_stat_database AS S
 			ON D.oid = S.datid
 		  WHERE (NOT D.datistemplate) @only@
@@ -1416,6 +1417,11 @@ func (c *collector) getDatabases(fillSize, onlyListed bool, dbList []string) {
 		q = strings.Replace(q, `S.sessions_fatal`, `0`, 1)
 		q = strings.Replace(q, `S.sessions_killed`, `0`, 1)
 	}
+	if c.version < pgv18 {
+		// these columns only in pg >= 18
+		q = strings.Replace(q, `S.parallel_workers_to_launch`, `0`, 1)
+		q = strings.Replace(q, `S.parallel_workers_launched`, `0`, 1)
+	}
 
 	// do the query
 	rows, err := c.db.QueryContext(ctx, q, args...)
@@ -1435,7 +1441,8 @@ func (c *collector) getDatabases(fillSize, onlyListed bool, dbList []string) {
 			&d.BlkReadTime, &d.BlkWriteTime, &d.StatsReset, &d.ChecksumFailures,
 			&d.ChecksumLastFailure, &d.SessionTime, &d.ActiveTime,
 			&d.IdleInTxTime, &d.Sessions, &d.SessionsAbandoned,
-			&d.SessionsFatal, &d.SessionsKilled); err != nil {
+			&d.SessionsFatal, &d.SessionsKilled, &d.ParallelWorkersToLaunch,
+			&d.ParallelWorkersLaunched); err != nil {
 			log.Fatalf("pg_stat_database query failed: %v", err)
 		}
 		d.Size = -1 // will be filled in later if asked for

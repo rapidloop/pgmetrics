@@ -399,6 +399,9 @@ type Database struct {
 	SessionsAbandoned   int64   `json:"sessions_abandoned,omitempty"`       // pg >= v14
 	SessionsFatal       int64   `json:"sessions_fatal,omitempty"`           // pg >= v14
 	SessionsKilled      int64   `json:"sessions_killed,omitempty"`          // pg >= v14
+	// following fields present only in schema 1.19 and later
+	ParallelWorkersToLaunch int64 `json:"parallel_workers_to_launch,omitempty"` // pg >= v18
+	ParallelWorkersLaunched int64 `json:"parallel_workers_launched,omitempty"`  // pg >= v18
 }
 
 type Table struct {
