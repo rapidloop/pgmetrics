@@ -529,6 +529,8 @@ type VacuumProgressBackend struct {
 	NumDeadItemIDs    int64 `json:"num_dead_item_ids,omitempty"` // pg >= v17
 	IndexesTotal      int64 `json:"indexes_total,omitempty"`     // pg >= v17
 	IndexesProcessed  int64 `json:"indexes_processed,omitempty"` // pg >= v17
+	// following fields present only in schema 1.19 and later
+	DelayTime float64 `json:"delay_time,omitempty"` // millisecs, pg >= v18
 }
 
 type Extension struct {
@@ -977,6 +979,8 @@ type AnalyzeProgressBackend struct {
 	ChildTablesTotal        int64  `json:"child_tables_total"`
 	ChildTablesDone         int64  `json:"child_tables_done"`
 	CurrentChildTableRelOID int    `json:"child_oid"`
+	// following fields present only in schema 1.19 and later
+	DelayTime float64 `json:"delay_time,omitempty"` // millisecs, pg >= v18
 }
 
 // BasebackupProgressBackend represents a row (and each row represents one

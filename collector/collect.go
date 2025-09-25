@@ -1798,9 +1798,15 @@ func (c *collector) getVacuumProgressv17() {
 			COALESCE(heap_blks_vacuumed, 0), COALESCE(index_vacuum_count, 0),
 			COALESCE(max_dead_tuple_bytes, 0), COALESCE(dead_tuple_bytes, 0),
 			COALESCE(num_dead_item_ids, 0), COALESCE(indexes_total, 0),
-			COALESCE(indexes_processed, 0)
+			COALESCE(indexes_processed, 0), @delay_time@
 		  FROM pg_stat_progress_vacuum
 		  ORDER BY pid ASC`
+	if c.version < pgv18 { // delay_time only in pg >= 18
+		q = strings.Replace(q, "@delay_time@", "0", 1)
+	} else {
+		q = strings.Replace(q, "@delay_time@", "COALESCE(delay_time, 0)", 1)
+	}
+
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
 		log.Fatalf("pg_stat_progress_vacuum query failed: %v", err)
@@ -1812,7 +1818,7 @@ func (c *collector) getVacuumProgressv17() {
 		if err := rows.Scan(&p.PID, &p.DBName, &p.TableOID, &p.Phase, &p.HeapBlksTotal,
 			&p.HeapBlksScanned, &p.HeapBlksVacuumed, &p.IndexVacuumCount,
 			&p.MaxDeadTupleBytes, &p.DeadTupleBytes, &p.NumDeadItemIDs,
-			&p.IndexesTotal, &p.IndexesProcessed); err != nil {
+			&p.IndexesTotal, &p.IndexesProcessed, &p.DelayTime); err != nil {
 			log.Fatalf("pg_stat_progress_vacuum query failed: %v", err)
 		}
 		if t := c.result.TableByOID(p.TableOID); t != nil {
@@ -2879,9 +2885,15 @@ func (c *collector) getProgressAnalyze() {
 				 COALESCE(ext_stats_computed, 0::bigint),
 				 COALESCE(child_tables_total, 0::bigint),
 				 COALESCE(child_tables_done, 0::bigint),
-				 COALESCE(current_child_table_relid::int, 0::int)
+				 COALESCE(current_child_table_relid::int, 0::int),
+				 @delay_time@
 		    FROM pg_stat_progress_analyze
 		ORDER BY pid ASC`
+	if c.version < pgv18 { // delay_time only in pg >= 18
+		q = strings.Replace(q, "@delay_time@", "0", 1)
+	} else {
+		q = strings.Replace(q, "@delay_time@", "COALESCE(delay_time, 0)", 1)
+	}
 
 	rows, err := c.db.QueryContext(ctx, q)
 	if err != nil {
@@ -2896,7 +2908,7 @@ func (c *collector) getProgressAnalyze() {
 		if err := rows.Scan(&r.PID, &r.DBName, &r.TableOID, &r.Phase,
 			&r.SampleBlocksTotal, &r.SampleBlocksScanned, &r.ExtStatsTotal,
 			&r.ExtStatsComputed, &r.ChildTablesTotal, &r.ChildTablesDone,
-			&r.CurrentChildTableRelOID); err != nil {
+			&r.CurrentChildTableRelOID, &r.DelayTime); err != nil {
 			log.Fatalf("pg_stat_progress_analyze query scan failed: %v", err)
 		}
 		out = append(out, r)
