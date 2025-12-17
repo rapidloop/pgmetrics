@@ -3034,7 +3034,7 @@ func (c *collector) getProgressCluster() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	q := `SELECT pid, datname, relid::int, COALESCE(command, ''),
+	q := `SELECT pid, datname, COALESCE(relid::int, 0::int), COALESCE(command, ''),
 				 COALESCE(phase, ''),
 				 COALESCE(cluster_index_relid::int, 0),
 				 COALESCE(heap_tuples_scanned, 0::bigint),
@@ -3073,7 +3073,7 @@ func (c *collector) getProgressCopy() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	q := `SELECT pid, datname, relid::int, COALESCE(command, ''),
+	q := `SELECT pid, datname, COALESCE(relid::int, 0::int), COALESCE(command, ''),
 				 COALESCE(type, ''),
 				 COALESCE(bytes_processed, 0::bigint),
 				 COALESCE(bytes_total, 0::bigint),
@@ -3110,7 +3110,7 @@ func (c *collector) getProgressCreateIndex() {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	q := `SELECT pid, datname, relid::int, index_relid::int, command, phase,
+	q := `SELECT pid, datname, COALESCE(relid::int, 0::int), COALESCE(index_relid::int, 0::int), command, phase,
 				 COALESCE(lockers_total, 0::bigint),
 				 COALESCE(lockers_done, 0::bigint),
 				 COALESCE(current_locker_pid::int, 0::int),
