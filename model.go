@@ -19,7 +19,7 @@ package pgmetrics
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
 //
-//	1.20 - Subscription conflict stats (Postgres 18)
+//	1.20 - Add subscription conflict stats, IO stats
 //	1.19 - Postgres 18 support
 //	1.18 - Add schema name for extensions
 //	1.17 - Raw log entries, Postgres 17 support
@@ -202,6 +202,10 @@ type Model struct {
 
 	// value of pg_conf_load_time() as seconds since epoch
 	ConfLoadTime int64 `json:"conf_load_time,omitempty"`
+
+	// following fields are present only in schema 1.20 and later
+
+	StatIOs []StatIO `json:"stat_ios,omitempty"`
 }
 
 // DatabaseByOID iterates over the databases in the model and returns the reference
@@ -721,12 +725,12 @@ type Subscription struct {
 	ApplyErrorCount int `json:"apply_error_count,omitempty"` // >= pg15
 	SyncErrorCount  int `json:"sync_error_count,omitempty"`  // >= pg15
 	// following fields present only in schema 1.20 and later
-	ConflInsertExists           int64 `json:"confl_insert_exists,omitempty"`            // >= pg18
-	ConflUpdateOriginDiffers    int64 `json:"confl_update_origin_differs,omitempty"`    // >= pg18
-	ConflUpdateExists           int64 `json:"confl_update_exists,omitempty"`            // >= pg18
-	ConflUpdateMissing          int64 `json:"confl_update_missing,omitempty"`           // >= pg18
-	ConflDeleteOriginDiffers    int64 `json:"confl_delete_origin_differs,omitempty"`    // >= pg18
-	ConflDeleteMissing          int64 `json:"confl_delete_missing,omitempty"`           // >= pg18
+	ConflInsertExists           int64 `json:"confl_insert_exists,omitempty"`             // >= pg18
+	ConflUpdateOriginDiffers    int64 `json:"confl_update_origin_differs,omitempty"`     // >= pg18
+	ConflUpdateExists           int64 `json:"confl_update_exists,omitempty"`             // >= pg18
+	ConflUpdateMissing          int64 `json:"confl_update_missing,omitempty"`            // >= pg18
+	ConflDeleteOriginDiffers    int64 `json:"confl_delete_origin_differs,omitempty"`     // >= pg18
+	ConflDeleteMissing          int64 `json:"confl_delete_missing,omitempty"`            // >= pg18
 	ConflMultipleUniqueConflict int64 `json:"confl_multiple_unique_conflicts,omitempty"` // >= pg18
 }
 
@@ -1168,4 +1172,30 @@ type Checkpointer struct {
 	// following fields present only in schema 1.19 and later
 	NumDone     int64 `json:"num_done,omitempty"`     // pg >= v18
 	SLRUWritten int64 `json:"slru_written,omitempty"` // pg >= v18
+}
+
+// StatIO contains one row from pg_stat_io. Present only in pg >= v16. In pgv16
+// and pgv17, {read,write,extend}_bytes are computed as
+// {read,write,extend}s*op_bytes. Added in schema 1.20.
+type StatIO struct {
+	BackendType   string  `json:"backend_type"`
+	Object        string  `json:"object"`
+	Context       string  `json:"context"`
+	Reads         int64   `json:"reads"`
+	ReadBytes     int64   `json:"read_bytes"`
+	ReadTime      float64 `json:"read_time"` // in milliseconds
+	Writes        int64   `json:"writes"`
+	WriteBytes    int64   `json:"write_bytes"`
+	WriteTime     float64 `json:"write_time"` // in milliseconds
+	Extends       int64   `json:"extends"`
+	ExtendBytes   int64   `json:"extend_bytes"`
+	ExtendTime    float64 `json:"extend_time"` // in milliseconds
+	Writebacks    int64   `json:"writebacks"`
+	WritebackTime float64 `json:"writeback_time"` // in milliseconds
+	Hits          int64   `json:"hits"`
+	Evictions     int64   `json:"evictions"`
+	Reuses        int64   `json:"reuses"`
+	Fsyncs        int64   `json:"fsyncs"`
+	FsyncTime     float64 `json:"fsync_time"` // in milliseconds
+	StatsReset    int64   `json:"stats_reset"`
 }

@@ -541,6 +541,10 @@ func (c *collector) collectCluster(o CollectConfig) {
 		c.getCheckpointer()
 	}
 
+	if c.version >= pgv16 {
+		c.getStatIOs()
+	}
+
 	if !arrayHas(o.Omit, "log") && c.local {
 		c.getLogInfo()
 	}
@@ -3209,6 +3213,70 @@ func (c *collector) getCheckpointer() {
 	}
 
 	c.result.Checkpointer = &ckp
+}
+
+func (c *collector) getStatIOs() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	var q string
+	if c.version >= pgv18 {
+		q = `SELECT
+				backend_type, object, context,
+				COALESCE(reads, 0), COALESCE(read_bytes, 0), COALESCE(read_time, 0),
+				COALESCE(writes, 0), COALESCE(write_bytes, 0), COALESCE(write_time, 0),
+				COALESCE(extends, 0), COALESCE(extend_bytes, 0), COALESCE(extend_time, 0),
+				COALESCE(writebacks, 0), COALESCE(writeback_time, 0), COALESCE(hits, 0),
+				COALESCE(evictions, 0), COALESCE(reuses, 0), COALESCE(fsyncs, 0),
+				COALESCE(fsync_time, 0),
+				COALESCE(EXTRACT(EPOCH FROM stats_reset)::bigint, 0)
+			FROM pg_stat_io`
+	} else if c.version >= pgv16 {
+		q = `SELECT
+				backend_type, object, context,
+				COALESCE(reads, 0), COALESCE(reads*op_bytes, 0) AS read_bytes,
+				COALESCE(read_time, 0),
+				COALESCE(writes, 0), COALESCE(writes*op_bytes, 0) AS write_bytes,
+				COALESCE(write_time, 0),
+				COALESCE(extends, 0), COALESCE(extends*op_bytes, 0) AS extend_bytes,
+				COALESCE(extend_time, 0),
+				COALESCE(writebacks, 0), COALESCE(writeback_time, 0), COALESCE(hits, 0),
+				COALESCE(evictions, 0), COALESCE(reuses, 0), COALESCE(fsyncs, 0),
+				COALESCE(fsync_time, 0),
+				COALESCE(EXTRACT(EPOCH FROM stats_reset)::bigint, 0)
+			FROM pg_stat_io`
+	} else {
+		// pg_stat_io not present before v16
+		return
+	}
+
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		log.Printf("warning: pg_stat_io query failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var out []pgmetrics.StatIO
+	for rows.Next() {
+		var r pgmetrics.StatIO
+		if err := rows.Scan(&r.BackendType, &r.Object, &r.Context, &r.Reads,
+			&r.ReadBytes, &r.ReadTime, &r.Writes, &r.WriteBytes, &r.WriteTime,
+			&r.Extends, &r.ExtendBytes, &r.ExtendTime, &r.Writebacks,
+			&r.WritebackTime, &r.Hits, &r.Evictions, &r.Reuses, &r.Fsyncs,
+			&r.FsyncTime, &r.StatsReset); err != nil {
+			log.Fatalf("pg_stat_io query scan failed: %v", err)
+		}
+		if r.Reads+r.Writes+r.Extends+r.Writebacks+r.Hits+
+			r.Evictions+r.Reuses+r.Fsyncs > 0 {
+			out = append(out, r)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		log.Fatalf("pg_stat_io query rows failed: %v", err)
+	}
+
+	c.result.StatIOs = out
 }
 
 //------------------------------------------------------------------------------
