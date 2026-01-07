@@ -19,6 +19,7 @@ package pgmetrics
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
 //
+//	1.20 - Subscription conflict stats (Postgres 18)
 //	1.19 - Postgres 18 support
 //	1.18 - Add schema name for extensions
 //	1.17 - Raw log entries, Postgres 17 support
@@ -40,7 +41,7 @@ package pgmetrics
 //	1.2 - more table and index attributes
 //	1.1 - added NotificationQueueUsage and Statements
 //	1.0 - initial release
-const ModelSchemaVersion = "1.19"
+const ModelSchemaVersion = "1.20"
 
 // Model contains the entire information collected by a single run of
 // pgmetrics. It can be converted to and from json without loss of
@@ -719,6 +720,14 @@ type Subscription struct {
 	// following fields present only in schema 1.13 and later
 	ApplyErrorCount int `json:"apply_error_count,omitempty"` // >= pg15
 	SyncErrorCount  int `json:"sync_error_count,omitempty"`  // >= pg15
+	// following fields present only in schema 1.20 and later
+	ConflInsertExists           int64 `json:"confl_insert_exists,omitempty"`            // >= pg18
+	ConflUpdateOriginDiffers    int64 `json:"confl_update_origin_differs,omitempty"`    // >= pg18
+	ConflUpdateExists           int64 `json:"confl_update_exists,omitempty"`            // >= pg18
+	ConflUpdateMissing          int64 `json:"confl_update_missing,omitempty"`           // >= pg18
+	ConflDeleteOriginDiffers    int64 `json:"confl_delete_origin_differs,omitempty"`    // >= pg18
+	ConflDeleteMissing          int64 `json:"confl_delete_missing,omitempty"`           // >= pg18
+	ConflMultipleUniqueConflict int64 `json:"confl_multiple_unique_conflicts,omitempty"` // >= pg18
 }
 
 // Lock represents a single row from pg_locks. Added in schema 1.3.

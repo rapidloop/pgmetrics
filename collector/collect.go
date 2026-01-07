@@ -2728,7 +2728,40 @@ func (c *collector) getSubscriptions() {
 	defer cancel()
 
 	var q string
-	if c.version >= pgv15 {
+	if c.version >= pgv18 {
+		q = `WITH
+				sc AS (SELECT srsubid, COUNT(*) AS c FROM pg_subscription_rel GROUP BY 1),
+				swc AS (SELECT subid, COUNT(*) AS c FROM pg_stat_subscription GROUP BY 1),
+				sss AS (SELECT subid, apply_error_count, sync_error_count,
+					confl_insert_exists, confl_update_origin_differs,
+					confl_update_exists, confl_update_missing,
+					confl_delete_origin_differs, confl_delete_missing,
+					confl_multiple_unique_conflicts FROM pg_stat_subscription_stats)
+			SELECT
+				s.oid, s.subname, current_database(), subenabled,
+				array_length(subpublications, 1) AS pubcount, sc.c AS tabcount,
+				swc.c AS workercount,
+				COALESCE(ss.received_lsn::text, ''),
+				COALESCE(ss.latest_end_lsn::text, ''),
+				ss.last_msg_send_time, ss.last_msg_receipt_time,
+				COALESCE(EXTRACT(EPOCH FROM ss.latest_end_time)::bigint, 0),
+				sss.apply_error_count, sss.sync_error_count,
+				COALESCE(sss.confl_insert_exists, 0),
+				COALESCE(sss.confl_update_origin_differs, 0),
+				COALESCE(sss.confl_update_exists, 0),
+				COALESCE(sss.confl_update_missing, 0),
+				COALESCE(sss.confl_delete_origin_differs, 0),
+				COALESCE(sss.confl_delete_missing, 0),
+				COALESCE(sss.confl_multiple_unique_conflicts, 0)
+			FROM
+				pg_subscription s
+				JOIN sc ON s.oid = sc.srsubid
+				JOIN pg_stat_subscription ss ON s.oid = ss.subid
+				JOIN swc ON s.oid = swc.subid
+				JOIN sss ON s.oid = sss.subid
+			WHERE
+				ss.relid IS NULL`
+	} else if c.version >= pgv15 {
 		q = `WITH
 				sc AS (SELECT srsubid, COUNT(*) AS c FROM pg_subscription_rel GROUP BY 1),
 				swc AS (SELECT subid, COUNT(*) AS c FROM pg_stat_subscription GROUP BY 1),
@@ -2741,8 +2774,8 @@ func (c *collector) getSubscriptions() {
 				COALESCE(ss.latest_end_lsn::text, ''),
 				ss.last_msg_send_time, ss.last_msg_receipt_time,
 				COALESCE(EXTRACT(EPOCH FROM ss.latest_end_time)::bigint, 0),
-				sss.apply_error_count,
-				sss.sync_error_count
+				sss.apply_error_count, sss.sync_error_count,
+				0, 0, 0, 0, 0, 0, 0
 			FROM
 				pg_subscription s
 				JOIN sc ON s.oid = sc.srsubid
@@ -2763,7 +2796,7 @@ func (c *collector) getSubscriptions() {
 				COALESCE(ss.latest_end_lsn::text, ''),
 				ss.last_msg_send_time, ss.last_msg_receipt_time,
 				COALESCE(EXTRACT(EPOCH FROM ss.latest_end_time)::bigint, 0),
-				0, 0
+				0, 0, 0, 0, 0, 0, 0, 0, 0
 			FROM
 				pg_subscription s
 				JOIN sc ON s.oid = sc.srsubid
@@ -2783,7 +2816,10 @@ func (c *collector) getSubscriptions() {
 		var msgSend, msgRecv sql.NullTime
 		if err := rows.Scan(&s.OID, &s.Name, &s.DBName, &s.Enabled, &s.PubCount,
 			&s.TableCount, &s.WorkerCount, &s.ReceivedLSN, &s.LatestEndLSN,
-			&msgSend, &msgRecv, &s.LatestEndTime, &s.ApplyErrorCount, &s.SyncErrorCount); err != nil {
+			&msgSend, &msgRecv, &s.LatestEndTime, &s.ApplyErrorCount, &s.SyncErrorCount,
+			&s.ConflInsertExists, &s.ConflUpdateOriginDiffers, &s.ConflUpdateExists,
+			&s.ConflUpdateMissing, &s.ConflDeleteOriginDiffers, &s.ConflDeleteMissing,
+			&s.ConflMultipleUniqueConflict); err != nil {
 			log.Fatalf("pg_subscription query failed: %v", err)
 		}
 		if msgSend.Valid {
