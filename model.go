@@ -19,7 +19,7 @@ package pgmetrics
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
 //
-//	1.20 - Add subscription conflict stats, IO stats
+//	1.20 - Add subscription conflict stats, IO stats, pgbouncer 1.25 support
 //	1.19 - Postgres 18 support
 //	1.18 - Add schema name for extensions
 //	1.17 - Raw log entries, Postgres 17 support
@@ -797,6 +797,9 @@ type PgBouncerPool struct {
 	ClWaitingCancelReq int `json:"cl_waiting_cancel_req,omitempty"` // only in pgbouncer >= v1.18
 	SvActiveCancel     int `json:"sv_active_cancel,omitempty"`      // only in pgbouncer >= v1.18
 	SvBeingCanceled    int `json:"sv_being_canceled,omitempty"`     // only in pgbouncer >= v1.18
+
+	// following fields present only in schema 1.20 and later
+	LoadBalanceHosts string `json:"load_balance_hosts,omitempty"` // only in pgbouncer >= v1.24
 }
 
 // PgBouncerDatabase contains information about one database of PgBouncer
@@ -811,6 +814,11 @@ type PgBouncerDatabase struct {
 	CurrConn       int    `json:"current_connections"`
 	Paused         bool   `json:"paused"`
 	Disabled       bool   `json:"disabled"`
+
+	// following fields present only in schema 1.20 and later
+	LoadBalanceHosts string `json:"load_balance_hosts,omitempty"`
+	MaxClientConn    int64  `json:"max_client_connections,omitempty"`
+	CurrClientConn   int64  `json:"current_client_connections,omitempty"`
 }
 
 // PgBouncerStat contains one row from SHOW STATS. Times are in seconds,
@@ -835,6 +843,14 @@ type PgBouncerStat struct {
 	// following fields present only in schema 1.17 and later
 	TotalServerAssignmentCount int64 `json:"total_server_assignment_count,omitempty"` // only in pgbouncer >= v1.23
 	AvgServerAssignmentCount   int64 `json:"avg_server_assignment_count,omitempty"`   // only in pgbouncer >= v1.23
+
+	// following fields present only in schema 1.20 and later
+	TotalClientParseCount int64 `json:"total_client_parse_count,omitempty"` // only in pgbouncer >= v1.24
+	TotalServerParseCount int64 `json:"total_server_parse_count,omitempty"` // only in pgbouncer >= v1.24
+	TotalBindCount        int64 `json:"total_bind_count,omitempty"`         // only in pgbouncer >= v1.24
+	AvgClientParseCount   int64 `json:"avg_client_parse_count,omitempty"`   // only in pgbouncer >= v1.24
+	AvgServerParseCount   int64 `json:"avg_server_parse_count,omitempty"`   // only in pgbouncer >= v1.24
+	AvgBindCount          int64 `json:"avg_bind_count,omitempty"`           // only in pgbouncer >= v1.24
 }
 
 // Plan represents a query execution plan. Added in schema 1.7.
