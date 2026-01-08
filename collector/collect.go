@@ -1384,9 +1384,12 @@ func (c *collector) getDatabases(fillSize, onlyListed bool, dbList []string) {
 			@checksum_failures@, @checksum_last_failure@,
 			S.session_time, S.active_time, S.idle_in_transaction_time,
 			S.sessions, S.sessions_abandoned, S.sessions_fatal, S.sessions_killed,
-			S.parallel_workers_to_launch, S.parallel_workers_launched
-		  FROM pg_database AS D JOIN pg_stat_database AS S
-			ON D.oid = S.datid
+			S.parallel_workers_to_launch, S.parallel_workers_launched,
+			C.confl_tablespace, C.confl_lock, C.confl_snapshot,
+			C.confl_bufferpin, C.confl_deadlock, C.confl_active_logicalslot
+		  FROM pg_database AS D
+			JOIN pg_stat_database AS S ON D.oid = S.datid
+			JOIN pg_stat_database_conflicts AS C ON C.datid = S.datid
 		  WHERE (NOT D.datistemplate) @only@
 		  ORDER BY D.oid ASC`
 
@@ -1426,6 +1429,10 @@ func (c *collector) getDatabases(fillSize, onlyListed bool, dbList []string) {
 		q = strings.Replace(q, `S.parallel_workers_to_launch`, `0`, 1)
 		q = strings.Replace(q, `S.parallel_workers_launched`, `0`, 1)
 	}
+	if c.version < pgv16 {
+		// these columns only in pg >= 16
+		q = strings.Replace(q, `C.confl_active_logicalslot`, `0`, 1)
+	}
 
 	// do the query
 	rows, err := c.db.QueryContext(ctx, q, args...)
@@ -1446,7 +1453,9 @@ func (c *collector) getDatabases(fillSize, onlyListed bool, dbList []string) {
 			&d.ChecksumLastFailure, &d.SessionTime, &d.ActiveTime,
 			&d.IdleInTxTime, &d.Sessions, &d.SessionsAbandoned,
 			&d.SessionsFatal, &d.SessionsKilled, &d.ParallelWorkersToLaunch,
-			&d.ParallelWorkersLaunched); err != nil {
+			&d.ParallelWorkersLaunched, &d.ConflTablespace, &d.ConflLock,
+			&d.ConflSnapshot, &d.ConflBufferpin, &d.ConflDeadlock,
+			&d.ConflLogicalslot); err != nil {
 			log.Fatalf("pg_stat_database query failed: %v", err)
 		}
 		d.Size = -1 // will be filled in later if asked for

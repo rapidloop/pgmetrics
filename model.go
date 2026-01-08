@@ -407,6 +407,14 @@ type Database struct {
 	// following fields present only in schema 1.19 and later
 	ParallelWorkersToLaunch int64 `json:"parallel_workers_to_launch,omitempty"` // pg >= v18
 	ParallelWorkersLaunched int64 `json:"parallel_workers_launched,omitempty"`  // pg >= v18
+	// following fields present only in schema 1.20 and later
+	// the Confl* fields are only relevant on standby servers
+	ConflTablespace  int64 `json:"confl_tablespace,omitempty"`
+	ConflLock        int64 `json:"confl_lock,omitempty"`
+	ConflSnapshot    int64 `json:"confl_snapshot,omitempty"`
+	ConflBufferpin   int64 `json:"confl_bufferpin,omitempty"`
+	ConflDeadlock    int64 `json:"confl_deadlock,omitempty"`
+	ConflLogicalslot int64 `json:"confl_active_logicalslot,omitempty"` // pg >= v16
 }
 
 type Table struct {
