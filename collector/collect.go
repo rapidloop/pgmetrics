@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -250,7 +251,7 @@ func Collect(o CollectConfig, dbnames []string) *pgmetrics.Model {
 			collectFromDB(connstr+makeKV("dbname", dbname), c, o)
 		}
 	}
-	if !arrayHas(o.Omit, "log") && c.local {
+	if !slices.Contains(o.Omit, "log") && c.local {
 		// note: for rds we collect logs in the next step
 		c.collectLogs(o)
 	}
@@ -545,7 +546,7 @@ func (c *collector) collectCluster(o CollectConfig) {
 		c.getStatIOs()
 	}
 
-	if !arrayHas(o.Omit, "log") && c.local {
+	if !slices.Contains(o.Omit, "log") && c.local {
 		c.getLogInfo()
 	}
 }
@@ -553,14 +554,12 @@ func (c *collector) collectCluster(o CollectConfig) {
 // info and stats for the current database
 func (c *collector) collectDatabase(o CollectConfig) {
 	currdb := c.getCurrentDatabase()
-	for _, d := range c.result.Metadata.CollectedDBs {
-		if currdb == d { // don't collect from same db twice
-			return
-		}
+	if slices.Contains(c.result.Metadata.CollectedDBs, currdb) {
+		return // don't collect from same db twice
 	}
 	c.result.Metadata.CollectedDBs = append(c.result.Metadata.CollectedDBs, currdb)
 
-	if !arrayHas(o.Omit, "tables") {
+	if !slices.Contains(o.Omit, "tables") {
 		c.getTables(!o.NoSizes)
 		// partition information, added schema v1.2
 		if c.version >= pgv10 {
@@ -569,28 +568,28 @@ func (c *collector) collectDatabase(o CollectConfig) {
 		// parent information, added schema v1.2
 		c.getParentInfo()
 	}
-	if !arrayHas(o.Omit, "tables") && !arrayHas(o.Omit, "indexes") {
+	if !slices.Contains(o.Omit, "tables") && !slices.Contains(o.Omit, "indexes") {
 		c.getIndexes(!o.NoSizes)
-		if !arrayHas(o.Omit, "indexdefs") {
+		if !slices.Contains(o.Omit, "indexdefs") {
 			c.getIndexDef()
 		}
 	}
-	if !arrayHas(o.Omit, "sequences") {
+	if !slices.Contains(o.Omit, "sequences") {
 		c.getSequences()
 	}
-	if !arrayHas(o.Omit, "functions") {
+	if !slices.Contains(o.Omit, "functions") {
 		c.getUserFunctions()
 	}
-	if !arrayHas(o.Omit, "extensions") {
+	if !slices.Contains(o.Omit, "extensions") {
 		c.getExtensions()
 	}
-	if !arrayHas(o.Omit, "tables") && !arrayHas(o.Omit, "triggers") {
+	if !slices.Contains(o.Omit, "tables") && !slices.Contains(o.Omit, "triggers") {
 		c.getDisabledTriggers()
 	}
-	if !arrayHas(o.Omit, "statements") {
+	if !slices.Contains(o.Omit, "statements") {
 		c.getStatements(currdb)
 	}
-	if !arrayHas(o.Omit, "bloat") {
+	if !slices.Contains(o.Omit, "bloat") {
 		c.getBloat()
 	}
 
@@ -601,18 +600,9 @@ func (c *collector) collectDatabase(o CollectConfig) {
 	}
 
 	// citus, added in schema 1.9
-	if !arrayHas(o.Omit, "citus") {
+	if !slices.Contains(o.Omit, "citus") {
 		c.getCitus(currdb, !o.NoSizes)
 	}
-}
-
-func arrayHas(arr []string, val string) bool {
-	for _, elem := range arr {
-		if elem == val {
-			return true
-		}
-	}
-	return false
 }
 
 // schemaOK checks to see if this schema is OK to be collected, based on the
@@ -2103,7 +2093,7 @@ func (c *collector) getStatementsv112(schema string) {
 		  FROM @schema@.pg_stat_statements
 		  ORDER BY total_exec_time DESC
 		  LIMIT $2`
-	q = strings.Replace(q, "@schema@", schema, -1)
+	q = strings.ReplaceAll(q, "@schema@", schema)
 	rows, err := c.db.QueryContext(ctx, q, c.sqlLength, c.stmtsLimit)
 	if err != nil {
 		log.Printf("warning: pg_stat_statements query failed: %v", err)
@@ -2175,7 +2165,7 @@ func (c *collector) getStatementsv111(schema string) {
 		  FROM @schema@.pg_stat_statements
 		  ORDER BY total_exec_time DESC
 		  LIMIT $2`
-	q = strings.Replace(q, "@schema@", schema, -1)
+	q = strings.ReplaceAll(q, "@schema@", schema)
 	rows, err := c.db.QueryContext(ctx, q, c.sqlLength, c.stmtsLimit)
 	if err != nil {
 		log.Printf("warning: pg_stat_statements query failed: %v", err)
@@ -2244,7 +2234,7 @@ func (c *collector) getStatementsv110(schema string) {
 		  FROM @schema@.pg_stat_statements
 		  ORDER BY total_exec_time DESC
 		  LIMIT $2`
-	q = strings.Replace(q, "@schema@", schema, -1)
+	q = strings.ReplaceAll(q, "@schema@", schema)
 	rows, err := c.db.QueryContext(ctx, q, c.sqlLength, c.stmtsLimit)
 	if err != nil {
 		log.Printf("warning: pg_stat_statements query failed: %v", err)
@@ -3842,7 +3832,7 @@ func (c *collector) collectFromRDS(o CollectConfig) {
 	}
 	c.result.RDS = rds
 
-	if !arrayHas(o.Omit, "log") {
+	if !slices.Contains(o.Omit, "log") {
 		if !c.getPrefix() {
 			return // already logged
 		}
