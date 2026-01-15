@@ -75,8 +75,8 @@ func (c *collector) getPPVersion() string {
  *     select_cnt, load_balance_node, replication_delay, replication_state,
  *     replication_sync_state, last_status_change
  *
- *     4.3, 4.4, 4.5 (14) node_id, hostname, port, status, pg_status, lb_weight,
- *     role, pg_role, select_cnt, load_balance_node, replication_delay,
+ *     4.3, 4.4, 4.5, 4.6, 4.7 (14) node_id, hostname, port, status, pg_status,
+ *	   lb_weight, role, pg_role, select_cnt, load_balance_node, replication_delay,
  *     replication_state, replication_sync_state, last_status_change
  */
 
@@ -146,7 +146,7 @@ func pgpoolScanTime(val string) (out int64) {
  *
  *     4.0, 4.1 not present
  *
- *     4.2, 4.3, 4.4, 4.5 (20) node_id, hostname, port, status, role,
+ *     4.2, 4.3, 4.4, 4.5, 4.6, 4.7 (20) node_id, hostname, port, status, role,
  *     last_status_change, total_count, success_count, fail_count, skip_count,
  *     retry_count, average_retry_count, max_retry_count, max_duration,
  *     min_duration, average_duration, last_health_check,
@@ -221,9 +221,9 @@ func (c *collector) getPPHCStats(semversion string) {
  *
  *     4.0, 4.1 not present
  *
- *     4.2, 4.3, 4.4, 4.5 (14) node_id, hostname, port, status, role, select_cnt,
- *     insert_cnt, update_cnt, delete_cnt, ddl_cnt, other_cnt, panic_cnt,
- *     fatal_cnt, error_cnt
+ *     4.2, 4.3, 4.4, 4.5, 4.6, 4.7 (14) node_id, hostname, port, status, role,
+ *	   select_cnt, insert_cnt, update_cnt, delete_cnt, ddl_cnt, other_cnt,
+ *	   panic_cnt, fatal_cnt, error_cnt
  */
 
 func (c *collector) getPPBEStats(semversion string) {
@@ -286,7 +286,7 @@ func (c *collector) getPPBEStats(semversion string) {
  *     used_cache_enrties_size, free_cache_entries_size,
  *     fragment_cache_entries_size
  *
- *     4.3, 4.4, 4.5 (9) num_cache_hits, num_selects, cache_hit_ratio,
+ *     4.3, 4.4, 4.5, 4.6, 4.7 (9) num_cache_hits, num_selects, cache_hit_ratio,
  *     num_hash_entries, used_hash_entries, num_cache_entries,
  *     used_cache_entries_size, free_cache_entries_size,
  *     fragment_cache_entries_size
