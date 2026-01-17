@@ -17,10 +17,12 @@ builds:
     env:
       - CGO_ENABLED=0
 archives:
-  - format: tar.gz
+  - formats:
+      - tar.gz
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
     files:
       - README.md
       - LICENSE
