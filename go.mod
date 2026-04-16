@@ -5,7 +5,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/monitor/armmonitor v0.11.0
 	github.com/aws/aws-sdk-go v1.54.9
 	github.com/dustin/go-humanize v1.0.1
-	github.com/jackc/pgx/v5 v5.8.0
+	github.com/jackc/pgx/v5 v5.9.0
 	github.com/pborman/getopt v1.1.0
 	golang.org/x/mod v0.31.0
 	golang.org/x/term v0.38.0
@@ -30,6 +30,6 @@ require (
 	golang.org/x/text v0.32.0 // indirect
 )
 
-go 1.24.0
+go 1.25.0
 
 toolchain go1.25.1
