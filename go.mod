@@ -5,10 +5,10 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/monitor/armmonitor v0.11.0
 	github.com/aws/aws-sdk-go v1.54.9
 	github.com/dustin/go-humanize v1.0.1
-	github.com/jackc/pgx/v5 v5.8.0
+	github.com/jackc/pgx/v5 v5.10.0
 	github.com/pborman/getopt v1.1.0
-	golang.org/x/mod v0.31.0
-	golang.org/x/term v0.38.0
+	golang.org/x/mod v0.40.0
+	golang.org/x/term v0.45.0
 )
 
 require (
@@ -25,11 +25,9 @@ require (
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/net v0.48.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.39.0 // indirect
-	golang.org/x/text v0.32.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 )
 
-go 1.24.0
-
-toolchain go1.25.1
+go 1.25.13
