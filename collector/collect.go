@@ -1876,7 +1876,7 @@ func (c *collector) getExtensions() {
 		  	x.extversion,
 		  	COALESCE(e.comment, ''),
 		  	x.extnamespace::regnamespace
-		  FROM pg_available_extensions() e(name, default_version, comment)
+		  FROM pg_available_extensions() e
 		  LEFT JOIN pg_extension x ON e.name = x.extname
 		  WHERE x.extversion IS NOT NULL
 		  ORDER BY name ASC`
