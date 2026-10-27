@@ -3568,8 +3568,8 @@ func getRecentFile(d string) (f string) {
 }
 
 func (c *collector) collectLogs(o CollectConfig) {
-	// need log_file_prefix first
-	if !c.getPrefix() {
+	// need log_file_prefix first (stderr only: csvlog records do not use it)
+	if !c.csvlog && !c.getPrefix() {
 		return // already logged
 	}
 

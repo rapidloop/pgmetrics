@@ -212,16 +212,18 @@ func (c *collector) readLogLinesCSV(filename string) error {
 	start := time.Now().Add(-window)
 
 	r := csv.NewReader(f)
-	r.FieldsPerRecord = 23
+	r.FieldsPerRecord = -1 // 23 columns before pg13, 24 in pg13, 26 since pg14
 	r.ReuseRecord = true
 	for {
 		record, err := r.Read()
-		if err != nil {
-			if err == io.EOF || errors.Is(err, csv.ErrFieldCount) {
-				// ignore file if ErrFieldCount, probably not a csv file
-				return nil
-			}
+		if err == io.EOF {
+			return nil
+		} else if err != nil {
 			return err
+		}
+		if len(record) < 23 {
+			// ignore file, probably not a csv file
+			return nil
 		}
 		t, err := time.Parse("2006-01-02 15:04:05.999 MST", record[0])
 		if err != nil || t.Before(start) {
