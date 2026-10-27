@@ -99,7 +99,7 @@ func (c *collector) readLogLinesText(filename string) error {
 		if _, err := io.ReadFull(f, buf[0:buflen]); err != nil {
 			return err
 		}
-		ts, err := firstTS(buf[0:buflen], c.rxPrefix)
+		ts, err := firstTS(buf[0:buflen], c.rxPrefix, c.logLocation())
 		if err != nil {
 			return err
 		}
@@ -137,7 +137,7 @@ func (c *collector) processLogBuf(start time.Time, bigbuf []byte) (err error) {
 	pos := c.rxPrefix.FindIndex(bigbuf)
 	for len(pos) == 2 && len(bigbuf) > 0 {
 		match := c.rxPrefix.FindSubmatch(bigbuf[pos[0]:])
-		t, user, db, qid, err := getMatchData(match, c.rxPrefix)
+		t, user, db, qid, err := getMatchData(match, c.rxPrefix, c.logLocation())
 		if err != nil {
 			return err
 		}
@@ -212,18 +212,20 @@ func (c *collector) readLogLinesCSV(filename string) error {
 	start := time.Now().Add(-window)
 
 	r := csv.NewReader(f)
-	r.FieldsPerRecord = 23
+	r.FieldsPerRecord = -1 // 23 columns before pg13, 24 in pg13, 26 since pg14
 	r.ReuseRecord = true
 	for {
 		record, err := r.Read()
-		if err != nil {
-			if err == io.EOF || errors.Is(err, csv.ErrFieldCount) {
-				// ignore file if ErrFieldCount, probably not a csv file
-				return nil
-			}
+		if err == io.EOF {
+			return nil
+		} else if err != nil {
 			return err
 		}
-		t, err := time.Parse("2006-01-02 15:04:05.999 MST", record[0])
+		if len(record) < 23 {
+			// ignore file, probably not a csv file
+			return nil
+		}
+		t, err := parseLogTime("2006-01-02 15:04:05.999 MST", record[0], c.logLocation())
 		if err != nil || t.Before(start) {
 			continue
 		}
@@ -389,7 +391,33 @@ func (c *collector) processDeadlock() {
 
 //------------------------------------------------------------------------------
 
-func getMatchData(match [][]byte, prefix *regexp.Regexp) (t time.Time, user, db string, qid int64, err error) {
+// logLocation is the server's log_timezone, the zone of %m, %t and csvlog timestamps.
+// Go resolves their zone abbreviations (MSK, CET, -03) only within a known location.
+func (c *collector) logLocation() *time.Location {
+	if c.logTZ == nil {
+		c.logTZ = time.Local
+		if tz := c.setting("log_timezone"); tz != "" {
+			if loc, err := time.LoadLocation(tz); err == nil {
+				c.logTZ = loc
+			} else {
+				log.Printf("warning: unknown log_timezone %q, reading log times in the local time zone", tz)
+			}
+		}
+	}
+	return c.logTZ
+}
+
+// parseLogTime parses a timestamp that ends in a zone abbreviation. An abbreviation
+// unknown in loc, which Go would read as offset 0, is taken as the wall time in loc.
+func parseLogTime(layout, value string, loc *time.Location) (time.Time, error) {
+	t, err := time.ParseInLocation(layout, value, loc)
+	if name, off := t.Zone(); err == nil && off == 0 && t.Location() != loc && name != "UTC" && name != "GMT" {
+		t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), loc)
+	}
+	return t, err
+}
+
+func getMatchData(match [][]byte, prefix *regexp.Regexp, loc *time.Location) (t time.Time, user, db string, qid int64, err error) {
 	idxT, idxM, idxN := -1, -1, -1
 	for i, s := range prefix.SubexpNames() {
 		switch s {
@@ -408,9 +436,9 @@ func getMatchData(match [][]byte, prefix *regexp.Regexp) (t time.Time, user, db 
 		}
 	}
 	if idxM != -1 && len(match[idxM]) > 0 {
-		t, err = time.Parse("2006-01-02 15:04:05.000 MST", string(match[idxM]))
+		t, err = parseLogTime("2006-01-02 15:04:05.000 MST", string(match[idxM]), loc)
 	} else if idxT != -1 && len(match[idxT]) > 0 {
-		t, err = time.Parse("2006-01-02 15:04:05 MST", string(match[idxT]))
+		t, err = parseLogTime("2006-01-02 15:04:05 MST", string(match[idxT]), loc)
 	} else if idxN != -1 && len(match[idxN]) > 0 {
 		parts := strings.Split(string(match[idxN]), ".")
 		if n := len(parts); n < 1 || n > 2 {
@@ -433,7 +461,7 @@ func getMatchData(match [][]byte, prefix *regexp.Regexp) (t time.Time, user, db 
 	return
 }
 
-func firstTS(buf []byte, prefix *regexp.Regexp) (t time.Time, err error) {
+func firstTS(buf []byte, prefix *regexp.Regexp, loc *time.Location) (t time.Time, err error) {
 	matches := prefix.FindSubmatch(buf)
 	if len(matches) == 0 {
 		return
@@ -451,9 +479,9 @@ func firstTS(buf []byte, prefix *regexp.Regexp) (t time.Time, err error) {
 		}
 	}
 	if idxM != -1 && len(matches[idxM]) > 0 {
-		t, err = time.Parse("2006-01-02 15:04:05.000 MST", string(matches[idxM]))
+		t, err = parseLogTime("2006-01-02 15:04:05.000 MST", string(matches[idxM]), loc)
 	} else if idxT != -1 && len(matches[idxT]) > 0 {
-		t, err = time.Parse("2006-01-02 15:04:05 MST", string(matches[idxT]))
+		t, err = parseLogTime("2006-01-02 15:04:05 MST", string(matches[idxT]), loc)
 	} else if idxN != -1 && len(matches[idxN]) > 0 {
 		parts := strings.Split(string(matches[idxN]), ".")
 		if n := len(parts); n < 1 || n > 2 {
